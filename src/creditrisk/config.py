@@ -16,10 +16,15 @@ class PathsConfig:
     model_dir: Path = Path("models")
     model_filename: str = "baseline_model.joblib"
     metrics_file: Path = Path("reports/metrics.json")
+    reports_dir: Path = Path("reports")
 
     @property
     def model_path(self) -> Path:
         return Path(self.model_dir) / self.model_filename
+
+    @property
+    def evaluation_dir(self) -> Path:
+        return Path(self.reports_dir) / "evaluation"
 
 
 @dataclass
@@ -35,6 +40,9 @@ class DataConfig:
     bureau_path: Optional[Path] = None
     bureau_balance_path: Optional[Path] = None
     previous_application_path: Optional[Path] = None
+    installments_payments_path: Optional[Path] = None
+    credit_card_balance_path: Optional[Path] = None
+    pos_cash_balance_path: Optional[Path] = None
 
 
 @dataclass
@@ -107,6 +115,13 @@ class TrackingConfig:
 
 
 @dataclass
+class InferenceConfig:
+    """Inference-time options."""
+
+    decision_threshold: float = 0.5
+
+
+@dataclass
 class Config:
     """Container for all configuration sections."""
 
@@ -116,6 +131,7 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
+    inference: InferenceConfig = field(default_factory=InferenceConfig)
 
     @classmethod
     def from_yaml(cls, path: Path | str) -> "Config":
@@ -135,6 +151,7 @@ class Config:
             training=build(TrainingConfig, "training", TrainingConfig()),
             model=build(ModelConfig, "model", ModelConfig()),
             tracking=build(TrackingConfig, "tracking", TrackingConfig()),
+            inference=build(InferenceConfig, "inference", InferenceConfig()),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -143,6 +160,7 @@ class Config:
                 "model_dir": str(self.paths.model_dir),
                 "model_filename": self.paths.model_filename,
                 "metrics_file": str(self.paths.metrics_file),
+                "reports_dir": str(self.paths.reports_dir),
             },
             "data": {
                 "raw_path": str(self.data.raw_path),
@@ -157,6 +175,15 @@ class Config:
                 else None,
                 "previous_application_path": str(self.data.previous_application_path)
                 if self.data.previous_application_path
+                else None,
+                "installments_payments_path": str(self.data.installments_payments_path)
+                if self.data.installments_payments_path
+                else None,
+                "credit_card_balance_path": str(self.data.credit_card_balance_path)
+                if self.data.credit_card_balance_path
+                else None,
+                "pos_cash_balance_path": str(self.data.pos_cash_balance_path)
+                if self.data.pos_cash_balance_path
                 else None,
             },
             "features": {
@@ -195,5 +222,8 @@ class Config:
                 "experiment_name": self.tracking.experiment_name,
                 "run_name": self.tracking.run_name,
                 "tags": self.tracking.tags,
+            },
+            "inference": {
+                "decision_threshold": self.inference.decision_threshold,
             },
         }

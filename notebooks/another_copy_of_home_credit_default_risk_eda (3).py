@@ -30,7 +30,7 @@ drive.mount('/content/drive')
     2.   Loans that client get from other instituions get reported to Credit Bureau
     3.   Home Credit can extract data from Credit Bureau
 
-# **Exploring application_train.csv**
+# **Application_train.csv**
 
 *   Data from **Home Credit**
 *   application_train.csv has the target labels
@@ -227,6 +227,8 @@ GROUP BY
       SK_ID_CURR
 """).df()
 
+"""# Bureau Balance"""
+
 bureau_balance_df = pd.read_csv('/content/drive/MyDrive/home_credit_default_data/bureau_balance.csv')
 
 bureau_balance_df_preprocess = con.execute("""
@@ -355,20 +357,214 @@ GROUP BY
     SK_ID_CURR
 """).df()
 
+"""# Installments Payment"""
+
+installments_payment_df = pd.read_csv('/content/drive/MyDrive/home_credit_default_data/installments_payments.csv')
+
+installments_payment_df.columns
+
+installments_payment_df_preprocess = con.execute(f"""
+WITH table_1 AS (
+    SELECT
+          *,
+          AMT_PAYMENT/(AMT_INSTALMENT + {EPS}) AS PAYMENT_RATIO,
+          DAYS_ENTRY_PAYMENT - DAYS_INSTALMENT AS LATE_DAYS
+    FROM
+          installments_payment_df
+),
+
+table_2 AS (
+    SELECT
+          SK_ID_PREV,
+          AVG(PAYMENT_RATIO) AS INSTAL_PAYMENT_RATIO_MEAN,
+          STDDEV(PAYMENT_RATIO) AS INSTAL_PAYMENT_RATIO_STD,
+          AVG(LATE_DAYS) AS INSTAL_LATE_MEAN,
+          MAX(LATE_DAYS) AS INSTAL_LATE_MAX,
+          AVG(CASE WHEN LATE_DAYS>0 THEN 1 ELSE 0 END) AS INSTAL_LATE_SHARE,
+          AVG(CASE WHEN LATE_DAYS>0 THEN 30 ELSE 0 END) AS INSTAL_SEVERE_LATE_SHARE
+    FROM
+          table_1
+    GROUP BY
+          SK_ID_PREV
+)
+
+SELECT * FROM table_2
+""").df()
+
+installments_payment_join_df = con.execute("""
+WITH table_1 AS (
+    SELECT
+          A.*,
+          B.SK_ID_CURR
+    FROM
+          installments_payment_df_preprocess A
+    LEFT JOIN
+          prev_application_df B
+          ON A.SK_ID_PREV = B.SK_ID_PREV
+),
+
+
+table_2 AS (
+    SELECT
+          SK_ID_CURR,
+          AVG(INSTAL_PAYMENT_RATIO_MEAN) AS INSTAL_PAYMENT_RATIO_MEAN,
+          AVG(INSTAL_PAYMENT_RATIO_STD) AS INSTAL_PAYMENT_RATIO_STD,
+          AVG(INSTAL_LATE_MEAN) AS INSTAL_LATE_MEAN,
+          MAX(INSTAL_LATE_MAX) AS INSTAL_LATE_MAX,
+          AVG(INSTAL_LATE_SHARE) AS INSTAL_LATE_SHARE,
+          AVG(INSTAL_SEVERE_LATE_SHARE) AS INSTAL_SEVERE_LATE_SHARE
+    FROM
+          table_1
+    GROUP BY
+          SK_ID_CURR
+
+)
+
+SELECT * FROM table_2
+""").df()
+
+"""# Credit Card Balance"""
+
+creditcard_balance_df = pd.read_csv('/content/drive/MyDrive/home_credit_default_data/credit_card_balance.csv')
+
+creditcard_balance_df_preprocess = con.execute(f"""
+WITH table_1 AS (
+    SELECT
+          *,
+          AMT_BALANCE / (AMT_CREDIT_LIMIT_ACTUAL + {EPS}) AS CC_UTIL_ROW,
+          AMT_PAYMENT_TOTAL_CURRENT / (AMT_INST_MIN_REGULARITY + {EPS}) AS CC_MINPAY_COVERAGE_ROW,
+          CASE WHEN (SK_DPD > 0) OR (SK_DPD_DEF > 0) THEN 1 ELSE 0 END AS CC_DPD_ANY_ROW,
+          AMT_DRAWINGS_ATM_CURRENT / (AMT_CREDIT_LIMIT_ACTUAL + {EPS}) AS CC_CASH_RATIO_ROW
+    FROM
+          creditcard_balance_df
+),
+
+table_2 AS (
+    SELECT
+          SK_ID_PREV,
+          AVG(CC_UTIL_ROW) AS CC_UTIL_MEAN,
+          MAX(CC_UTIL_ROW) AS CC_UTIL_MAX,
+          AVG(CC_MINPAY_COVERAGE_ROW) AS CC_MINPAY_COVERAGE_MEAN,
+          AVG(CASE WHEN CC_MINPAY_COVERAGE_ROW >=1 THEN 1 ELSE 0 END) AS CC_MINPAY_MET_SHARE,
+          AVG(CC_DPD_ANY_ROW) AS CC_DPD_ANY_SHARE,
+          MAX(SK_DPD) AS CC_DPD_MAX,
+          AVG(CC_CASH_RATIO_ROW) AS CC_CASH_RATIO_MEAN
+    FROM
+          table_1
+    GROUP BY
+          SK_ID_PREV
+
+
+)
+
+SELECT * FROM table_2
+""").df()
+
+creditcard_balance_join_df = con.execute("""
+WITH table_1 AS (
+    SELECT
+          A.*,
+          B.SK_ID_CURR
+    FROM
+          creditcard_balance_df_preprocess A
+    LEFT JOIN
+          prev_application_df B
+          ON A.SK_ID_PREV = B.SK_ID_PREV
+),
+
+
+table_2 AS (
+    SELECT
+          SK_ID_CURR,
+          AVG(CC_UTIL_MEAN) AS CC_UTIL_MEAN,
+          MAX(CC_UTIL_MAX) AS CC_UTIL_MAX,
+          AVG(CC_MINPAY_COVERAGE_MEAN) AS CC_MINPAY_COVERAGE_MEAN,
+          AVG(CC_MINPAY_MET_SHARE) AS CC_MINPAY_MET_SHARE,
+          AVG(CC_DPD_ANY_SHARE) AS CC_DPD_ANY_SHARE,
+          MAX(CC_DPD_MAX) AS CC_DPD_MAX,
+          AVG(CC_CASH_RATIO_MEAN) AS CC_CASH_RATIO_MEAN
+    FROM
+          table_1
+    GROUP BY
+          SK_ID_CURR
+
+)
+
+SELECT * FROM table_2
+""").df()
+
+"""# POS_CASH_balance.csv"""
+
+poscash_balance_df = pd.read_csv('/content/drive/MyDrive/home_credit_default_data/POS_CASH_balance.csv')
+
+poscash_balance_df_preprocess = con.execute(f"""
+WITH table_1 AS (
+    SELECT
+          *,
+          CASE WHEN (SK_DPD > 0) or (SK_DPD_DEF > 0) THEN 1 ELSE 0 END AS POS_DPD_ANY_ROW
+    FROM
+          poscash_balance_df
+),
+
+
+table_2 AS (
+    SELECT
+          SK_ID_PREV,
+          AVG(POS_DPD_ANY_ROW) AS POS_DPD_ANY_SHARE,
+          MAX(SK_DPD) AS POS_DPD_MAX,
+          -MAX(CASE WHEN NAME_CONTRACT_STATUS = 'Active' THEN MONTHS_BALANCE ELSE NULL END) AS POS_MONTHS_SINCE_LAST_ACTIVE
+
+    FROM
+          table_1
+    GROUP BY
+          SK_ID_PREV
+
+)
+
+SELECT * FROM table_2
+""").df()
+
+poscash_balance_join_df = con.execute("""
+WITH table_1 AS (
+    SELECT
+          A.*,
+          B.SK_ID_CURR
+    FROM
+          poscash_balance_df_preprocess A
+    LEFT JOIN
+          prev_application_df B
+          ON A.SK_ID_PREV = B.SK_ID_PREV
+),
+
+
+table_2 AS (
+    SELECT
+          SK_ID_CURR,
+          AVG(POS_DPD_ANY_SHARE) AS POS_DPD_ANY_SHARE,
+          MAX(POS_DPD_MAX) AS POS_DPD_MAX,
+          MAX(POS_MONTHS_SINCE_LAST_ACTIVE) AS POS_MONTHS_SINCE_LAST_ACTIVE
+    FROM
+          table_1
+    GROUP BY
+          SK_ID_CURR
+
+)
+
+SELECT * FROM table_2
+""").df()
 
 
 
 
-"""#MODEL BUILDING 2"""
 
-# A, B, C are your already-prepared DataFrames:
-# A = application_df_preprocess
-# B = bureau_df_preproces_2            # one row per SK_ID_CURR
-# C = prev_application_df_preprocess   # one row per SK_ID_CURR
+
+
+[col for col in poscash_balance_join_df.columns]
+
+"""#MODEL BUILDING 1"""
 
 import pandas as pd
 
-# keep exactly the columns the SQL selects
 b_cols = [
     "SK_ID_CURR",
     "BUREAU_N_ACTIVE","BUREAU_N_CLOSED","BUREAU_LAST_CREDIT_DAYS","BUREAU_LAST_UPDATE_DAYS",
@@ -385,10 +581,35 @@ c_cols = [
     "PREV_APPROVAL_RATE","PREV_REFUSED_RATE"
 ]
 
+d_cols = ['SK_ID_CURR',
+ 'INSTAL_PAYMENT_RATIO_MEAN',
+ 'INSTAL_PAYMENT_RATIO_STD',
+ 'INSTAL_LATE_MEAN',
+ 'INSTAL_LATE_MAX',
+ 'INSTAL_LATE_SHARE',
+ 'INSTAL_SEVERE_LATE_SHARE']
+
+e_cols = ['SK_ID_CURR',
+ 'CC_UTIL_MEAN',
+ 'CC_UTIL_MAX',
+ 'CC_MINPAY_COVERAGE_MEAN',
+ 'CC_MINPAY_MET_SHARE',
+ 'CC_DPD_ANY_SHARE',
+ 'CC_DPD_MAX',
+ 'CC_CASH_RATIO_MEAN']
+
+f_cols = ['SK_ID_CURR',
+ 'POS_DPD_ANY_SHARE',
+ 'POS_DPD_MAX',
+ 'POS_MONTHS_SINCE_LAST_ACTIVE']
+
 feature_store_df = (
     application_df_preprocess
       .merge(bureau_df_preproces_2[b_cols], on="SK_ID_CURR", how="left", validate="one_to_one")
       .merge(prev_application_df_preprocess[c_cols], on="SK_ID_CURR", how="left", validate="one_to_one")
+      .merge(installments_payment_join_df[d_cols], on="SK_ID_CURR", how="left", validate="one_to_one")
+      .merge(creditcard_balance_join_df[e_cols], on="SK_ID_CURR", how="left", validate="one_to_one")
+      .merge(poscash_balance_join_df[f_cols], on="SK_ID_CURR", how="left", validate="one_to_one")
 )
 
 # feature_store_df = application_df_preprocess.copy()
@@ -461,4 +682,84 @@ print(classification_report(y_test, y_pred, zero_division=0))
 # Confusion matrix
 cm = confusion_matrix(y_test, y_pred)
 print("\nConfusion matrix:\n", cm)
+
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    classification_report, confusion_matrix, roc_auc_score
+)
+import numpy as np
+
+# Ensure y_test is a 1D Series even if y_col is a list
+y_name = y_col[0] if isinstance(y_col, (list, tuple)) else y_col
+y_test = test_df[y_name]
+
+# Predictions (labels)
+y_pred = model.predict(test_df[X_cols])  # <- fixed from xy_pred
+
+# --- Metrics (thresholded labels) ---
+acc  = accuracy_score(y_test, y_pred)
+prec = precision_score(y_test, y_pred, zero_division=0)
+rec  = recall_score(y_test, y_pred, zero_division=0)
+f1   = f1_score(y_test, y_pred, zero_division=0)
+
+print(f"Accuracy : {acc:.4f}")
+print(f"Precision: {prec:.4f}")
+print(f"Recall   : {rec:.4f}")
+print(f"F1-score : {f1:.4f}")
+
+print("\nClassification report:")
+print(classification_report(y_test, y_pred, zero_division=0))
+
+cm = confusion_matrix(y_test, y_pred)
+print("\nConfusion matrix:\n", cm)
+
+# --- ROC–AUC (uses scores/probabilities, not labels) ---
+# Try to get per-class scores
+y_score = None
+score_matrix = None  # keep full matrix for multiclass
+
+if hasattr(model, "predict_proba"):
+    score_matrix = model.predict_proba(test_df[X_cols])
+elif hasattr(model, "decision_function"):
+    score_matrix = model.decision_function(test_df[X_cols])
+
+if score_matrix is not None:
+    # If 1D, make it 2D for uniform handling
+    if np.ndim(score_matrix) == 1:
+        score_matrix = np.asarray(score_matrix).reshape(-1, 1)
+
+    # Determine number of classes from scores or y_test
+    n_classes = score_matrix.shape[1] if score_matrix.ndim == 2 else 1
+    if n_classes <= 1:
+        # Binary case but only one column returned (rare) — fall back to y_pred
+        y_score = np.asarray(score_matrix).ravel() if score_matrix is not None else None
+    else:
+        # If binary, use positive-class column for standard ROC–AUC
+        if n_classes == 2:
+            y_score = score_matrix[:, 1]
+        else:
+            # Multiclass: keep full matrix
+            y_score = score_matrix
+
+# Print AUC
+if y_score is None:
+    print("\nROC–AUC: unavailable (model exposes neither predict_proba nor decision_function).")
+else:
+    try:
+        if y_score.ndim == 1 or y_score.shape[1] == 2:
+            # Binary ROC–AUC
+            # If we accidentally passed two columns, use the positive one
+            if y_score.ndim == 2 and y_score.shape[1] == 2:
+                y_score = y_score[:, 1]
+            auc = roc_auc_score(y_test, y_score)
+            print(f"\nROC–AUC (binary): {auc:.4f}")
+        else:
+            # Multiclass ROC–AUC (report both OVR and OVO)
+            auc_ovr = roc_auc_score(y_test, y_score, multi_class="ovr")
+            auc_ovo = roc_auc_score(y_test, y_score, multi_class="ovo")
+            print(f"\nROC–AUC (multiclass, OVR): {auc_ovr:.4f}")
+            print(f"ROC–AUC (multiclass, OVO): {auc_ovo:.4f}")
+    except ValueError as e:
+        # Handles cases like single-class y_test in the slice
+        print(f"\nROC–AUC: could not be computed ({e}).")
 

@@ -288,6 +288,159 @@ GROUP BY
     SK_ID_CURR
 """
 
+D_COLS = [
+    "SK_ID_CURR",
+    "INSTAL_PAYMENT_RATIO_MEAN",
+    "INSTAL_PAYMENT_RATIO_STD",
+    "INSTAL_LATE_MEAN",
+    "INSTAL_LATE_MAX",
+    "INSTAL_LATE_SHARE",
+    "INSTAL_SEVERE_LATE_SHARE",
+]
+
+E_COLS = [
+    "SK_ID_CURR",
+    "CC_UTIL_MEAN",
+    "CC_UTIL_MAX",
+    "CC_MINPAY_COVERAGE_MEAN",
+    "CC_MINPAY_MET_SHARE",
+    "CC_DPD_ANY_SHARE",
+    "CC_DPD_MAX",
+    "CC_CASH_RATIO_MEAN",
+]
+
+F_COLS = [
+    "SK_ID_CURR",
+    "POS_DPD_ANY_SHARE",
+    "POS_DPD_MAX",
+    "POS_MONTHS_SINCE_LAST_ACTIVE",
+]
+
+INSTALLMENTS_SQL = """
+WITH table_1 AS (
+    SELECT
+        *,
+        AMT_PAYMENT / (AMT_INSTALMENT + {EPS}) AS PAYMENT_RATIO,
+        DAYS_ENTRY_PAYMENT - DAYS_INSTALMENT AS LATE_DAYS
+    FROM
+        installments_payments_df
+),
+table_2 AS (
+    SELECT
+        SK_ID_PREV,
+        AVG(PAYMENT_RATIO) AS INSTAL_PAYMENT_RATIO_MEAN,
+        STDDEV_SAMP(PAYMENT_RATIO) AS INSTAL_PAYMENT_RATIO_STD,
+        AVG(LATE_DAYS) AS INSTAL_LATE_MEAN,
+        MAX(LATE_DAYS) AS INSTAL_LATE_MAX,
+        AVG(CASE WHEN LATE_DAYS > 0 THEN 1 ELSE 0 END) AS INSTAL_LATE_SHARE,
+        AVG(CASE WHEN LATE_DAYS > 0 THEN 30 ELSE 0 END) AS INSTAL_SEVERE_LATE_SHARE
+    FROM
+        table_1
+    GROUP BY
+        SK_ID_PREV
+),
+table_3 AS (
+    SELECT
+        p.SK_ID_CURR,
+        AVG(t2.INSTAL_PAYMENT_RATIO_MEAN) AS INSTAL_PAYMENT_RATIO_MEAN,
+        AVG(t2.INSTAL_PAYMENT_RATIO_STD) AS INSTAL_PAYMENT_RATIO_STD,
+        AVG(t2.INSTAL_LATE_MEAN) AS INSTAL_LATE_MEAN,
+        MAX(t2.INSTAL_LATE_MAX) AS INSTAL_LATE_MAX,
+        AVG(t2.INSTAL_LATE_SHARE) AS INSTAL_LATE_SHARE,
+        AVG(t2.INSTAL_SEVERE_LATE_SHARE) AS INSTAL_SEVERE_LATE_SHARE
+    FROM
+        table_2 t2
+    JOIN
+        prev_application_df p
+        ON t2.SK_ID_PREV = p.SK_ID_PREV
+    GROUP BY
+        p.SK_ID_CURR
+)
+SELECT * FROM table_3
+"""
+
+CREDIT_CARD_BALANCE_SQL = """
+WITH table_1 AS (
+    SELECT
+        *,
+        AMT_BALANCE / (AMT_CREDIT_LIMIT_ACTUAL + {EPS}) AS CC_UTIL_ROW,
+        AMT_PAYMENT_TOTAL_CURRENT / (AMT_INST_MIN_REGULARITY + {EPS}) AS CC_MINPAY_COVERAGE_ROW,
+        CASE WHEN (SK_DPD > 0) OR (SK_DPD_DEF > 0) THEN 1 ELSE 0 END AS CC_DPD_ANY_ROW,
+        AMT_DRAWINGS_ATM_CURRENT / (AMT_CREDIT_LIMIT_ACTUAL + {EPS}) AS CC_CASH_RATIO_ROW
+    FROM
+        credit_card_balance_df
+),
+table_2 AS (
+    SELECT
+        SK_ID_PREV,
+        AVG(CC_UTIL_ROW) AS CC_UTIL_MEAN,
+        MAX(CC_UTIL_ROW) AS CC_UTIL_MAX,
+        AVG(CC_MINPAY_COVERAGE_ROW) AS CC_MINPAY_COVERAGE_MEAN,
+        AVG(CASE WHEN CC_MINPAY_COVERAGE_ROW >= 1 THEN 1 ELSE 0 END) AS CC_MINPAY_MET_SHARE,
+        AVG(CC_DPD_ANY_ROW) AS CC_DPD_ANY_SHARE,
+        MAX(SK_DPD) AS CC_DPD_MAX,
+        AVG(CC_CASH_RATIO_ROW) AS CC_CASH_RATIO_MEAN
+    FROM
+        table_1
+    GROUP BY
+        SK_ID_PREV
+),
+table_3 AS (
+    SELECT
+        p.SK_ID_CURR,
+        AVG(t2.CC_UTIL_MEAN) AS CC_UTIL_MEAN,
+        MAX(t2.CC_UTIL_MAX) AS CC_UTIL_MAX,
+        AVG(t2.CC_MINPAY_COVERAGE_MEAN) AS CC_MINPAY_COVERAGE_MEAN,
+        AVG(t2.CC_MINPAY_MET_SHARE) AS CC_MINPAY_MET_SHARE,
+        AVG(t2.CC_DPD_ANY_SHARE) AS CC_DPD_ANY_SHARE,
+        MAX(t2.CC_DPD_MAX) AS CC_DPD_MAX,
+        AVG(t2.CC_CASH_RATIO_MEAN) AS CC_CASH_RATIO_MEAN
+    FROM
+        table_2 t2
+    JOIN
+        prev_application_df p
+        ON t2.SK_ID_PREV = p.SK_ID_PREV
+    GROUP BY
+        p.SK_ID_CURR
+)
+SELECT * FROM table_3
+"""
+
+POS_CASH_BALANCE_SQL = """
+WITH table_1 AS (
+    SELECT
+        *,
+        CASE WHEN (SK_DPD > 0) OR (SK_DPD_DEF > 0) THEN 1 ELSE 0 END AS POS_DPD_ANY_ROW
+    FROM
+        pos_cash_balance_df
+),
+table_2 AS (
+    SELECT
+        SK_ID_PREV,
+        AVG(POS_DPD_ANY_ROW) AS POS_DPD_ANY_SHARE,
+        MAX(SK_DPD) AS POS_DPD_MAX,
+        -MAX(CASE WHEN NAME_CONTRACT_STATUS = 'Active' THEN MONTHS_BALANCE ELSE NULL END) AS POS_MONTHS_SINCE_LAST_ACTIVE
+    FROM
+        table_1
+    GROUP BY
+        SK_ID_PREV
+),
+table_3 AS (
+    SELECT
+        p.SK_ID_CURR,
+        AVG(t2.POS_DPD_ANY_SHARE) AS POS_DPD_ANY_SHARE,
+        MAX(t2.POS_DPD_MAX) AS POS_DPD_MAX,
+        MAX(t2.POS_MONTHS_SINCE_LAST_ACTIVE) AS POS_MONTHS_SINCE_LAST_ACTIVE
+    FROM
+        table_2 t2
+    JOIN
+        prev_application_df p
+        ON t2.SK_ID_PREV = p.SK_ID_PREV
+    GROUP BY
+        p.SK_ID_CURR
+)
+SELECT * FROM table_3
+"""
 B_COLS = [
     "SK_ID_CURR",
     "BUREAU_N_ACTIVE",
@@ -329,6 +482,9 @@ class SqlFeatureStoreInputs:
     bureau_df: pd.DataFrame
     bureau_balance_df: pd.DataFrame
     prev_application_df: pd.DataFrame
+    installments_payments_df: pd.DataFrame
+    credit_card_balance_df: pd.DataFrame
+    pos_cash_balance_df: pd.DataFrame
 
 
 def _register_frames(con: duckdb.DuckDBPyConnection, frames: Dict[str, pd.DataFrame]) -> None:
@@ -354,6 +510,9 @@ def build_feature_store_via_sql(
                 "bureau_df": inputs.bureau_df,
                 "bureau_balance_df": inputs.bureau_balance_df,
                 "prev_application_df": inputs.prev_application_df,
+                "installments_payments_df": inputs.installments_payments_df,
+                "credit_card_balance_df": inputs.credit_card_balance_df,
+                "pos_cash_balance_df": inputs.pos_cash_balance_df,
             },
         )
 
@@ -373,6 +532,9 @@ def build_feature_store_via_sql(
         con.register("bureau_df_preproces_2", bureau_df_preprocess_2)
 
         prev_application_df_preprocess = con.execute(PREVIOUS_APPLICATION_SQL).df()
+        installments_df_preprocess = _run_sql(con, INSTALLMENTS_SQL, eps)
+        creditcard_balance_df_preprocess = _run_sql(con, CREDIT_CARD_BALANCE_SQL, eps)
+        poscash_balance_df_preprocess = _run_sql(con, POS_CASH_BALANCE_SQL, eps)
 
     finally:
         con.close()
@@ -385,6 +547,21 @@ def build_feature_store_via_sql(
             validate="one_to_one",
         ).merge(
             prev_application_df_preprocess[C_COLS],
+            on="SK_ID_CURR",
+            how="left",
+            validate="one_to_one",
+        ).merge(
+            installments_df_preprocess[D_COLS],
+            on="SK_ID_CURR",
+            how="left",
+            validate="one_to_one",
+        ).merge(
+            creditcard_balance_df_preprocess[E_COLS],
+            on="SK_ID_CURR",
+            how="left",
+            validate="one_to_one",
+        ).merge(
+            poscash_balance_df_preprocess[F_COLS],
             on="SK_ID_CURR",
             how="left",
             validate="one_to_one",

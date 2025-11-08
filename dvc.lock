@@ -5,8 +5,12 @@ stages:
     deps:
     - path: configs/baseline.yaml
       hash: md5
-      md5: 09418d70c6940214a47bfb8d884d4750
-      size: 5468
+      md5: ec6be0ce7afc893fd2fa051a38ad19e4
+      size: 6292
+    - path: data/raw/POS_CASH_balance.csv
+      hash: md5
+      md5: cb8e5cc3885d1e53753955ffde317b44
+      size: 392703158
     - path: data/raw/application_train.csv
       hash: md5
       md5: 793a017f41fbac1dc28176b26dbab30e
@@ -19,22 +23,30 @@ stages:
       hash: md5
       md5: 5e815ea6eb338752724bcf46da13c602
       size: 375592889
+    - path: data/raw/credit_card_balance.csv
+      hash: md5
+      md5: ff83bfc2285d218802c6dff749bc5efc
+      size: 424582605
+    - path: data/raw/installments_payments.csv
+      hash: md5
+      md5: 4e9751972d02c376f0e75edbf6c9d07d
+      size: 723118349
     - path: data/raw/previous_application.csv
       hash: md5
       md5: bd1eb5f08a4700414db1742e5cc0f9fa
       size: 404973293
     - path: src/creditrisk/config.py
       hash: md5
-      md5: d793fe71c5479a0b82e9c4fc6a016bd3
-      size: 7310
+      md5: f627c7936a7147dbdce791cad6b940af
+      size: 8648
     - path: src/creditrisk/data/datasets.py
       hash: md5
-      md5: c6f52053ac188a5cd80628ac7ee26d80
-      size: 1766
+      md5: 17603de61eeba0e832d0051ea0addfcd
+      size: 1826
     - path: src/creditrisk/features/feature_store.py
       hash: md5
-      md5: eba45814770404ed00feabc1e7572cff
-      size: 11338
+      md5: 24e47396e3cda14158d10a966c59579d
+      size: 16983
     - path: src/creditrisk/features/preprocess.py
       hash: md5
       md5: b1b88832300444941670e9eca699f87d
@@ -45,8 +57,8 @@ stages:
       size: 5577
     - path: src/creditrisk/pipelines/train_baseline.py
       hash: md5
-      md5: a427b6f33898769a239c00679abc5581
-      size: 7316
+      md5: bca71741f3f4e4af01b984dff901a435
+      size: 9469
     params:
       configs/baseline.yaml:
         data.raw_path: data/raw/application_train.csv
@@ -57,9 +69,14 @@ stages:
     outs:
     - path: models/baseline_model.joblib
       hash: md5
-      md5: 5f1eff278135bcaf4f1cb73f61d5a7e5
-      size: 1233663
+      md5: 9139bd37f58b662978ca3cf5dfabf8aa
+      size: 1246483
+    - path: reports/evaluation
+      hash: md5
+      md5: 9411e10b8b92cde03dc11e879bdbfb72.dir
+      size: 144793
+      nfiles: 5
     - path: reports/metrics.json
       hash: md5
-      md5: 34d65d0dfad2186dbc833757b6975be9
+      md5: c7df124ed7cedc604dbea4be2a9c52bd
       size: 172

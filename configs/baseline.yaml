@@ -2,6 +2,7 @@ paths:
   model_dir: models
   model_filename: baseline_model.joblib
   metrics_file: reports/metrics.json
+  reports_dir: reports
 
 data:
   raw_path: data/raw/application_train.csv
@@ -14,6 +15,9 @@ data:
   bureau_path: data/raw/bureau.csv
   bureau_balance_path: data/raw/bureau_balance.csv
   previous_application_path: data/raw/previous_application.csv
+  installments_payments_path: data/raw/installments_payments.csv
+  credit_card_balance_path: data/raw/credit_card_balance.csv
+  pos_cash_balance_path: data/raw/POS_CASH_balance.csv
 
 features:
   categorical:
@@ -179,6 +183,22 @@ features:
     - PREV_EARLIEST_DECISION_DAYS
     - PREV_APPROVAL_RATE
     - PREV_REFUSED_RATE
+    - INSTAL_PAYMENT_RATIO_MEAN
+    - INSTAL_PAYMENT_RATIO_STD
+    - INSTAL_LATE_MEAN
+    - INSTAL_LATE_MAX
+    - INSTAL_LATE_SHARE
+    - INSTAL_SEVERE_LATE_SHARE
+    - CC_UTIL_MEAN
+    - CC_UTIL_MAX
+    - CC_MINPAY_COVERAGE_MEAN
+    - CC_MINPAY_MET_SHARE
+    - CC_DPD_ANY_SHARE
+    - CC_DPD_MAX
+    - CC_CASH_RATIO_MEAN
+    - POS_DPD_ANY_SHARE
+    - POS_DPD_MAX
+    - POS_MONTHS_SINCE_LAST_ACTIVE
 
 training:
   test_size: 0.2
@@ -210,3 +230,6 @@ tracking:
   tags:
     project: credit-risk
     stage: baseline
+
+inference:
+  decision_threshold: 0.5

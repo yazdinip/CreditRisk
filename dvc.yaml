@@ -13,6 +13,9 @@ stages:
       - data/raw/bureau.csv
       - data/raw/bureau_balance.csv
       - data/raw/previous_application.csv
+      - data/raw/installments_payments.csv
+      - data/raw/credit_card_balance.csv
+      - data/raw/POS_CASH_balance.csv
     params:
       - configs/baseline.yaml:
           - data.raw_path
@@ -23,3 +26,4 @@ stages:
     outs:
       - models/baseline_model.joblib
       - reports/metrics.json
+      - reports/evaluation

@@ -10,6 +10,7 @@ from typing import Dict
 
 import numpy as np
 import pandas as pd
+from sklearn.pipeline import Pipeline
 
 try:
     import mlflow
@@ -38,6 +39,7 @@ from creditrisk.models.baseline import (
     rebalance_training_data,
     save_model,
 )
+from creditrisk.utils.evaluation import save_evaluation_artifacts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -125,11 +127,44 @@ def main() -> None:
     else:
         raise ValueError("previous_application_path is required to run the SQL feature store builder.")
 
+    installments_df = load_optional_dataset(config.data.installments_payments_path)
+    if installments_df is not None:
+        LOGGER.info(
+            "Loaded installments payments data from %s with shape %s",
+            config.data.installments_payments_path,
+            installments_df.shape,
+        )
+    else:
+        raise ValueError("installments_payments_path is required to run the SQL feature store builder.")
+
+    credit_card_df = load_optional_dataset(config.data.credit_card_balance_path)
+    if credit_card_df is not None:
+        LOGGER.info(
+            "Loaded credit card balance data from %s with shape %s",
+            config.data.credit_card_balance_path,
+            credit_card_df.shape,
+        )
+    else:
+        raise ValueError("credit_card_balance_path is required to run the SQL feature store builder.")
+
+    pos_cash_df = load_optional_dataset(config.data.pos_cash_balance_path)
+    if pos_cash_df is not None:
+        LOGGER.info(
+            "Loaded POS cash balance data from %s with shape %s",
+            config.data.pos_cash_balance_path,
+            pos_cash_df.shape,
+        )
+    else:
+        raise ValueError("pos_cash_balance_path is required to run the SQL feature store builder.")
+
     sql_inputs = SqlFeatureStoreInputs(
         application_df=df,
         bureau_df=bureau_df,
         bureau_balance_df=bureau_balance_df,
         prev_application_df=prev_app_df,
+        installments_payments_df=installments_df,
+        credit_card_balance_df=credit_card_df,
+        pos_cash_balance_df=pos_cash_df,
     )
     feature_store_df = build_feature_store_via_sql(
         sql_inputs,
@@ -210,6 +245,23 @@ def main() -> None:
     LOGGER.info("Finished training model %s", config.model.type)
 
     metrics = evaluate_classifier(pipeline, X_test, y_test)
+
+    y_pred = pipeline.predict(X_test)
+    y_score = None
+    y_prob = None
+    if hasattr(pipeline, "predict_proba"):
+        y_prob = pipeline.predict_proba(X_test)[:, 1]
+        y_score = y_prob
+    elif hasattr(pipeline, "decision_function"):
+        y_score = pipeline.decision_function(X_test)
+
+    save_evaluation_artifacts(
+        y_true=y_test.to_numpy(),
+        y_pred=y_pred,
+        y_score=y_score,
+        y_prob=y_prob,
+        output_dir=config.paths.evaluation_dir,
+    )
 
     save_model(pipeline, config.paths.model_path)
     dump_metrics(metrics, Path(config.paths.metrics_file))
