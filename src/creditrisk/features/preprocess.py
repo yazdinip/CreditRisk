@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional
 
+import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -56,6 +57,22 @@ def preprocess_application_dataframe(
     if drop_cols:
         processed = processed.drop(columns=drop_cols, errors="ignore")
 
+    if (
+        feature_config.add_days_employed_anomaly
+        and "DAYS_EMPLOYED" in processed.columns
+    ):
+        anomaly_val = feature_config.days_employed_anomaly_value
+        processed["DAYS_EMPLOYED_ANOM"] = (
+            processed["DAYS_EMPLOYED"] == anomaly_val
+        ).astype(int)
+        processed["DAYS_EMPLOYED_REPLACED"] = processed["DAYS_EMPLOYED"].replace(
+            {anomaly_val: np.nan}
+        )
+
+    for col in feature_config.missing_indicator_columns:
+        if col in processed.columns:
+            processed[f"{col}_IS_MISSING"] = processed[col].isna().astype(int)
+
     if feature_config.add_missing_count:
         processed["missing_count"] = processed.isna().sum(axis=1)
 
@@ -85,8 +102,7 @@ def preprocess_application_dataframe(
     if categorical_cols:
         processed = pd.get_dummies(processed, columns=categorical_cols, drop_first=False)
 
-    median_values = processed.median(numeric_only=True)
-    processed = processed.fillna(median_values)
+    processed = processed.fillna(0)
 
     return processed
 

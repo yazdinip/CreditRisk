@@ -44,6 +44,7 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
 ## Baseline Recipe
 
 - Mirrors the original Colab workflow housed in `notebooks/01_home_credit_default_risk_eda.py`: drop columns with >40% missing data, remove a few high-cardinality categoricals, one-hot encode the rest, and add the per-row `missing_count` feature.
+- Adds the notebook’s domain tweaks: `DAYS_EMPLOYED_ANOM`/`DAYS_EMPLOYED_REPLACED` plus missingness indicators for `EXT_SOURCE_[1-3]` and `OWN_CAR_AGE` before pruning sparse columns.
 - Uses the manual feature shortlist from that notebook (`features.selected_columns` in `configs/baseline.yaml`) so training/inference always operate on the same 90+ engineered columns.
 - Balances the classes exactly like the notebook: SMOTE with `sampling_strategy=0.2` followed by downsampling the majority class before fitting the XGBoost model (see `TrainingConfig` in `configs/baseline.yaml`).
 - The `train_baseline` DVC stage now produces the serialized model + `reports/metrics.json`, and every run logs to the `baseline` MLflow experiment (stored locally under `mlruns/` by default).

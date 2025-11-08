@@ -45,6 +45,11 @@ class FeaturesConfig:
     categorical_drop: List[str] = field(
         default_factory=lambda: ["NAME_TYPE_SUITE", "OCCUPATION_TYPE", "ORGANIZATION_TYPE"]
     )
+    add_days_employed_anomaly: bool = True
+    days_employed_anomaly_value: int = 365243
+    missing_indicator_columns: List[str] = field(
+        default_factory=lambda: ["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3", "OWN_CAR_AGE"]
+    )
     selected_columns: List[str] = field(default_factory=list)
 
 
@@ -146,6 +151,9 @@ class Config:
                 "add_missing_count": self.features.add_missing_count,
                 "missing_threshold": self.features.missing_threshold,
                 "categorical_drop": self.features.categorical_drop,
+                "add_days_employed_anomaly": self.features.add_days_employed_anomaly,
+                "days_employed_anomaly_value": self.features.days_employed_anomaly_value,
+                "missing_indicator_columns": self.features.missing_indicator_columns,
                 "selected_columns": self.features.selected_columns,
             },
             "training": {

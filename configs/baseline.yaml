@@ -21,6 +21,13 @@ features:
     - NAME_TYPE_SUITE
     - OCCUPATION_TYPE
     - ORGANIZATION_TYPE
+  add_days_employed_anomaly: true
+  days_employed_anomaly_value: 365243
+  missing_indicator_columns:
+    - EXT_SOURCE_1
+    - EXT_SOURCE_2
+    - EXT_SOURCE_3
+    - OWN_CAR_AGE
   selected_columns:
     - CNT_CHILDREN
     - AMT_INCOME_TOTAL
@@ -30,6 +37,8 @@ features:
     - REGION_POPULATION_RELATIVE
     - DAYS_BIRTH
     - DAYS_EMPLOYED
+    - DAYS_EMPLOYED_ANOM
+    - DAYS_EMPLOYED_REPLACED
     - DAYS_REGISTRATION
     - DAYS_ID_PUBLISH
     - FLAG_MOBIL
@@ -50,6 +59,9 @@ features:
     - LIVE_CITY_NOT_WORK_CITY
     - EXT_SOURCE_2
     - EXT_SOURCE_3
+    - EXT_SOURCE_1_IS_MISSING
+    - EXT_SOURCE_2_IS_MISSING
+    - EXT_SOURCE_3_IS_MISSING
     - OBS_30_CNT_SOCIAL_CIRCLE
     - DEF_30_CNT_SOCIAL_CIRCLE
     - OBS_60_CNT_SOCIAL_CIRCLE
@@ -82,6 +94,7 @@ features:
     - AMT_REQ_CREDIT_BUREAU_QRT
     - AMT_REQ_CREDIT_BUREAU_YEAR
     - missing_count
+    - OWN_CAR_AGE_IS_MISSING
     - NAME_CONTRACT_TYPE_Cash loans
     - NAME_CONTRACT_TYPE_Revolving loans
     - CODE_GENDER_F

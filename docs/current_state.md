@@ -2,7 +2,7 @@
 
 ## From Notebook to Package
 
-- The original Colab export (`notebooks/01_home_credit_default_risk_eda.py`) performed column-pruning (drop >40 % missing, remove `NAME_TYPE_SUITE`, `OCCUPATION_TYPE`, `ORGANIZATION_TYPE`), added a row-level `missing_count`, one-hot encoded categoricals, selected a fixed list of ~100 columns, balanced with SMOTE + majority downsampling, scaled via `StandardScaler`, and trained an `XGBClassifier`.
+- The original Colab export (`notebooks/01_home_credit_default_risk_eda.py`) performed column-pruning (drop >40 % missing, remove `NAME_TYPE_SUITE`, `OCCUPATION_TYPE`, `ORGANIZATION_TYPE`), added a row-level `missing_count`, created `DAYS_EMPLOYED_ANOM`/`DAYS_EMPLOYED_REPLACED` plus `EXT_SOURCE_[1-3]` & `OWN_CAR_AGE` missing indicators, one-hot encoded categoricals, selected a fixed list of ~100 columns, balanced with SMOTE + majority downsampling, scaled via `StandardScaler`, and trained an `XGBClassifier`.
 - That exact flow is now codified under `src/creditrisk/`:
   - `features/preprocess.py` mirrors the cleaning and feature engineering (missing count, sparsity filter, categorical drops, get_dummies, median fill, column selection).
   - `models/baseline.py` reproduces the SMOTE + downsampling sequence and builds the `ColumnSubsetter → StandardScaler → model` pipeline.
