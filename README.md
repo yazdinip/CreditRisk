@@ -1,8 +1,22 @@
-# CreditRisk MLOps Playground
+# CreditRisk Default Risk Platform
 
-Home Credit Default Risk Kaggle competition re-imagined as an end-to-end MLOps exercise.
-The goal is not to squeeze every basis point of model performance but to practice building
-repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Actions, etc.).
+Drift Detectives built this repository as the engineering deliverable for our Home Credit Default Risk engagement.
+Per the Kaggle overview, the business question is, *"Can you predict how capable each applicant is of repaying a loan?"* so Home Credit can extend responsible financing to borrowers with limited credit histories.
+`docs/ML_Ops_Project_Proposal.pdf` defines the project charter: treat the Kaggle tables as a stand-in for the lender's raw feeds and ship a production-ready MLOps stack that operations, modeling, and SRE teams can run with confidence.
+
+## Why This Project Exists
+
+- Give credit analysts and servicing teams an auditable probability-of-default score at application time, closing the gap between inclusive lending goals and risk appetite.
+- Operationalize the research feature definitions from `notebooks/another_copy_of_home_credit_default_risk_eda (3).py` inside governed pipelines instead of copying a notebook workflow ad hoc.
+- Hit the success criteria from the proposal: reproducible end-to-end runs, MLflow-governed promotions, >=95% nightly pipeline success, and deployment-ready artifacts (SageMaker, Docker, FastAPI).
+- Embed observability (Great Expectations, Evidently, CloudWatch-ready hooks) so drift or data quality regressions are caught before they impact lending decisions.
+
+## Project Objectives
+
+1. Deliver a reliable, monitored credit-risk pipeline with deterministic data and feature lineage tracked by DVC.
+2. Promote approved models through CI/CD into SageMaker (or equivalent) endpoints with rollback-tested MLflow registry entries.
+3. Enforce data contracts that block >5% schema or missingness drift while keeping nightly runs above the 95% SLO defined in the proposal.
+4. Provide transparent experiment tracking plus dashboards so product owners can explain why a borrower was approved or declined.
 
 ## Repository Layout
 
@@ -44,13 +58,14 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
 
 ## Baseline Recipe
 
-- Mirrors the Colab workflow housed in `notebooks/another_copy_of_home_credit_default_risk_eda (3).py`: drop columns with >40% missing data, remove a few high-cardinality categoricals, one-hot encode the rest, and add the per-row `missing_count` feature.
-- Adds the notebook’s domain tweaks: age/tenure features (`AGE_YEARS`, `EMPLOYED_YEARS`, `EMPLOYMENT_YEARS_TO_AGE`), `DAYS_EMPLOYED_ANOM`/`DAYS_EMPLOYED_REPLACED`, and missingness indicators for `EXT_SOURCE_[1-3]` + `OWN_CAR_AGE` before pruning sparse columns.
-- Replays the DuckDB feature store SQL bit-for-bit (application enrichment + bureau, bureau_balance, previous_application, installments_payments, credit_card_balance, and POS_CASH aggregates) via `creditrisk.features.feature_store`, so notebooks and pipelines share identical engineered columns.
-- Generates the same ratio/count features defined in SQL (`PAYMENT_RATE`, `CREDIT_TO_INCOME`, `DOC_COUNT`, `CONTACT_COUNT`, `ADDR_MISMATCH_SUM`, etc.) so downstream stages see the exact engineered signals without running DuckDB inline.
-- Uses the curated feature shortlist from the notebook (`features.selected_columns` in `configs/baseline.yaml`) so training, batch inference, and FastAPI serving all operate on the same 160+ engineered columns.
-- Balances the classes exactly like the notebook: SMOTE with `sampling_strategy=0.2` followed by downsampling the majority class before fitting the XGBoost model (see `TrainingConfig` in `configs/baseline.yaml`).
+- Codifies the approved research workflow in `notebooks/another_copy_of_home_credit_default_risk_eda (3).py`: drop columns with >40% missing data, remove the high-cardinality categoricals, one-hot encode the rest, and add the `missing_count` signal so underwriting can reason about data sparsity.
+- Implements the lender-facing domain tweaks from the research spec: age/tenure features (`AGE_YEARS`, `EMPLOYED_YEARS`, `EMPLOYMENT_YEARS_TO_AGE`), `DAYS_EMPLOYED_ANOM`/`DAYS_EMPLOYED_REPLACED`, and missingness indicators for `EXT_SOURCE_[1-3]` + `OWN_CAR_AGE` before pruning sparse columns.
+- Replays the DuckDB feature store SQL bit-for-bit (application enrichment + bureau, bureau_balance, previous_application, installments_payments, credit_card_balance, and POS_CASH aggregates) via `creditrisk.features.feature_store`, ensuring we keep the bureau and repayment context the Kaggle brief calls out.
+- Generates the ratio/count features defined in SQL (`PAYMENT_RATE`, `CREDIT_TO_INCOME`, `DOC_COUNT`, `CONTACT_COUNT`, `ADDR_MISMATCH_SUM`, etc.) so downstream stages see the exact engineered signals without rerunning DuckDB inline.
+- Uses the curated feature shortlist from the proposal (`features.selected_columns` in `configs/baseline.yaml`) so training, batch inference, and FastAPI serving all operate on the same 160+ engineered columns.
+- Balances the classes exactly like the approved design: SMOTE with `sampling_strategy=0.2` followed by downsampling the majority class before fitting the XGBoost model (see `TrainingConfig` in `configs/baseline.yaml`).
 - Training logs metrics + plots to `reports/` and the `baseline` MLflow experiment while persisting the full sklearn pipeline for downstream reuse.
+
 
 ## Tooling Highlights
 
