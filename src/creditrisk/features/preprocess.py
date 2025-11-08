@@ -10,6 +10,8 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from creditrisk.config import FeaturesConfig
 
+EPS_DEFAULT = 1e-6
+
 
 class ColumnSubsetter(BaseEstimator, TransformerMixin):
     """Sklearn transformer that selects a fixed list of columns from a DataFrame."""
@@ -57,6 +59,11 @@ def preprocess_application_dataframe(
     if drop_cols:
         processed = processed.drop(columns=drop_cols, errors="ignore")
 
+    eps = feature_config.ratio_feature_eps or EPS_DEFAULT
+
+    if "DAYS_BIRTH" in processed.columns:
+        processed["AGE_YEARS"] = -processed["DAYS_BIRTH"] / (365 + eps)
+
     if (
         feature_config.add_days_employed_anomaly
         and "DAYS_EMPLOYED" in processed.columns
@@ -65,16 +72,54 @@ def preprocess_application_dataframe(
         processed["DAYS_EMPLOYED_ANOM"] = (
             processed["DAYS_EMPLOYED"] == anomaly_val
         ).astype(int)
-        processed["DAYS_EMPLOYED_REPLACED"] = processed["DAYS_EMPLOYED"].replace(
-            {anomaly_val: np.nan}
-        )
+        replaced = processed["DAYS_EMPLOYED"].replace({anomaly_val: np.nan})
+        processed["DAYS_EMPLOYED_REPLACED"] = replaced
+        processed["EMPLOYED_YEARS"] = -replaced / (365 + eps)
+        if "DAYS_BIRTH" in processed.columns:
+            processed["EMPLOYMENT_YEARS_TO_AGE"] = (-replaced) / (
+                -processed["DAYS_BIRTH"] + eps
+            )
 
     for col in feature_config.missing_indicator_columns:
         if col in processed.columns:
             processed[f"{col}_IS_MISSING"] = processed[col].isna().astype(int)
 
     if feature_config.add_missing_count:
-        processed["missing_count"] = processed.isna().sum(axis=1)
+        missing_count = processed.isna().sum(axis=1)
+        processed["missing_count"] = missing_count
+        processed["TOT_MISSING_COUNT"] = missing_count
+
+    if feature_config.add_ratio_features:
+        _maybe_assign_ratio(processed, "AMT_ANNUITY", "AMT_CREDIT", "PAYMENT_RATE", eps)
+        _maybe_assign_ratio(processed, "AMT_CREDIT", "AMT_INCOME_TOTAL", "CREDIT_TO_INCOME", eps)
+        _maybe_assign_ratio(processed, "AMT_ANNUITY", "AMT_INCOME_TOTAL", "ANNUITY_TO_INCOME", eps)
+        _maybe_assign_ratio(processed, "AMT_GOODS_PRICE", "AMT_CREDIT", "GOODS_TO_CREDIT", eps)
+        _maybe_assign_ratio(processed, "AMT_INCOME_TOTAL", "CNT_FAM_MEMBERS", "INCOME_PER_PERSON", eps)
+        _maybe_assign_ratio(processed, "CNT_CHILDREN", "CNT_FAM_MEMBERS", "CHILDREN_RATIO", eps)
+
+    if feature_config.add_count_features:
+        _maybe_sum_columns(
+            processed,
+            [f"FLAG_DOCUMENT_{i}" for i in range(2, 22)],
+            "DOC_COUNT",
+        )
+        _maybe_sum_columns(
+            processed,
+            ["FLAG_MOBIL", "FLAG_EMP_PHONE", "FLAG_WORK_PHONE", "FLAG_CONT_MOBILE", "FLAG_PHONE", "FLAG_EMAIL"],
+            "CONTACT_COUNT",
+        )
+        _maybe_sum_columns(
+            processed,
+            [
+                "REG_REGION_NOT_LIVE_REGION",
+                "REG_REGION_NOT_WORK_REGION",
+                "LIVE_REGION_NOT_WORK_REGION",
+                "REG_CITY_NOT_LIVE_CITY",
+                "REG_CITY_NOT_WORK_CITY",
+                "LIVE_CITY_NOT_WORK_CITY",
+            ],
+            "ADDR_MISMATCH_SUM",
+        )
 
     processed = _drop_sparse_columns(processed, feature_config.missing_threshold)
 
@@ -105,6 +150,17 @@ def preprocess_application_dataframe(
     processed = processed.fillna(0)
 
     return processed
+
+
+def _maybe_assign_ratio(df: pd.DataFrame, numerator: str, denominator: str, out_col: str, eps: float) -> None:
+    if numerator in df.columns and denominator in df.columns:
+        df[out_col] = df[numerator] / (df[denominator] + eps)
+
+
+def _maybe_sum_columns(df: pd.DataFrame, columns: List[str], out_col: str) -> None:
+    existing = [col for col in columns if col in df.columns]
+    if existing:
+        df[out_col] = df[existing].fillna(0).sum(axis=1)
 
 
 def resolve_selected_columns(

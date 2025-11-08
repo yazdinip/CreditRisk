@@ -50,6 +50,9 @@ class FeaturesConfig:
     missing_indicator_columns: List[str] = field(
         default_factory=lambda: ["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3", "OWN_CAR_AGE"]
     )
+    add_ratio_features: bool = True
+    add_count_features: bool = True
+    ratio_feature_eps: float = 1e-6
     selected_columns: List[str] = field(default_factory=list)
 
 
@@ -154,6 +157,9 @@ class Config:
                 "add_days_employed_anomaly": self.features.add_days_employed_anomaly,
                 "days_employed_anomaly_value": self.features.days_employed_anomaly_value,
                 "missing_indicator_columns": self.features.missing_indicator_columns,
+                "add_ratio_features": self.features.add_ratio_features,
+                "add_count_features": self.features.add_count_features,
+                "ratio_feature_eps": self.features.ratio_feature_eps,
                 "selected_columns": self.features.selected_columns,
             },
             "training": {
