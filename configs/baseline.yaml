@@ -10,6 +10,10 @@ data:
     - SK_ID_CURR
   sample_rows:
   stratify: true
+  entity_id_column: SK_ID_CURR
+  bureau_path: data/raw/bureau.csv
+  bureau_balance_path: data/raw/bureau_balance.csv
+  previous_application_path: data/raw/previous_application.csv
 
 features:
   categorical:
@@ -149,6 +153,32 @@ features:
     - WEEKDAY_APPR_PROCESS_START_THURSDAY
     - WEEKDAY_APPR_PROCESS_START_TUESDAY
     - WEEKDAY_APPR_PROCESS_START_WEDNESDAY
+    - BUREAU_N_ACTIVE
+    - BUREAU_N_CLOSED
+    - BUREAU_LAST_CREDIT_DAYS
+    - BUREAU_LAST_UPDATE_DAYS
+    - BUREAU_TOTAL_DEBT
+    - BUREAU_TOTAL_CREDIT
+    - BUREAU_LIMIT_SUM
+    - BUREAU_UTIL_MEAN
+    - BUREAU_OVERDUE_SUM
+    - BUREAU_MAX_OVERDUE
+    - BUREAU_PROLONG_SUM
+    - BB_DELINQ_SHARE_MEAN
+    - BB_WORST_STATUS_MAX
+    - BB_MONTHS_SINCE_LAST_DELINQ_MIN
+    - PREV_TOTAL
+    - PREV_APPROVED
+    - PREV_REFUSED
+    - PREV_CANCELLED
+    - PREV_UNUSED
+    - PREV_APP_CREDIT_RATIO_MEAN
+    - PREV_DOWNPAYMENT_RATE_MEAN
+    - PREV_CNT_PAYMENT_MEAN
+    - PREV_LAST_DECISION_DAYS
+    - PREV_EARLIEST_DECISION_DAYS
+    - PREV_APPROVAL_RATE
+    - PREV_REFUSED_RATE
 
 training:
   test_size: 0.2

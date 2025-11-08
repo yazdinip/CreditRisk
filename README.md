@@ -30,8 +30,8 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
    .venv/Scripts/activate  # or source .venv/bin/activate on macOS/Linux
    pip install -e .
    ```
-2. **Fetch the Kaggle data** and place `application_train.csv` under `data/raw/`.  
-   A `.dvc` pointer already exists; run `dvc pull` if a remote is configured or replace the file locally and run `dvc add data/raw/application_train.csv`.
+2. **Fetch the Kaggle data** and place the following under `data/raw/`: `application_train.csv`, `bureau.csv`, `bureau_balance.csv`, and `previous_application.csv`.  
+   A `.dvc` pointer already exists for `application_train.csv`; add/pull the remaining files with DVC so experiments stay reproducible.
 3. **Train the baseline pipeline** (this registers a run in MLflow and writes artifacts under DVC control):
    ```bash
    dvc repro train_baseline
@@ -46,6 +46,7 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
 - Mirrors the original Colab workflow housed in `notebooks/01_home_credit_default_risk_eda.py`: drop columns with >40% missing data, remove a few high-cardinality categoricals, one-hot encode the rest, and add the per-row `missing_count` feature.
 - Adds the notebook’s domain tweaks: age/tenure features (`AGE_YEARS`, `EMPLOYED_YEARS`, `EMPLOYMENT_YEARS_TO_AGE`), `DAYS_EMPLOYED_ANOM`/`DAYS_EMPLOYED_REPLACED`, and missingness indicators for `EXT_SOURCE_[1-3]` + `OWN_CAR_AGE` before pruning sparse columns.
 - Generates the same ratio/count features defined in SQL (`PAYMENT_RATE`, `CREDIT_TO_INCOME`, `DOC_COUNT`, `CONTACT_COUNT`, `ADDR_MISMATCH_SUM`, etc.) so downstream stages see the exact engineered signals without running DuckDB inline.
+- Executes the original DuckDB SQL straight from `notebooks/another_copy_of_home_credit_default_risk_eda (1).py` via `creditrisk.features.feature_store`, so the feature store (application enrichment + bureau/bureau_balance/previous aggregates) is reproduced bit-for-bit inside the pipeline.
 - Uses the manual feature shortlist from that notebook (`features.selected_columns` in `configs/baseline.yaml`) so training/inference always operate on the same 90+ engineered columns.
 - Balances the classes exactly like the notebook: SMOTE with `sampling_strategy=0.2` followed by downsampling the majority class before fitting the XGBoost model (see `TrainingConfig` in `configs/baseline.yaml`).
 - The `train_baseline` DVC stage now produces the serialized model + `reports/metrics.json`, and every run logs to the `baseline` MLflow experiment (stored locally under `mlruns/` by default).
@@ -66,3 +67,5 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
 - Add feature store + data quality jobs (e.g., Great Expectations, Evidently).
 - Stand up deployment scaffolding (FastAPI service + Dockerfile) and monitoring hooks so we can
   exercise the full MLOps lifecycle outlined in the project proposal.
+
+

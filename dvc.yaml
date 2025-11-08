@@ -5,10 +5,14 @@ stages:
       - configs/baseline.yaml
       - src/creditrisk/config.py
       - src/creditrisk/data/datasets.py
+      - src/creditrisk/features/feature_store.py
       - src/creditrisk/features/preprocess.py
       - src/creditrisk/models/baseline.py
       - src/creditrisk/pipelines/train_baseline.py
       - data/raw/application_train.csv
+      - data/raw/bureau.csv
+      - data/raw/bureau_balance.csv
+      - data/raw/previous_application.csv
     params:
       - configs/baseline.yaml:
           - data.raw_path

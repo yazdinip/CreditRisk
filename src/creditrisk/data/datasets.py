@@ -21,6 +21,16 @@ def load_dataset(path: Path | str, sample_rows: Optional[int] = None) -> pd.Data
     return df
 
 
+def load_optional_dataset(
+    path: Optional[Path | str],
+    sample_rows: Optional[int] = None,
+) -> Optional[pd.DataFrame]:
+    """Load a dataset if a path is provided; otherwise return None."""
+    if not path:
+        return None
+    return load_dataset(path, sample_rows=sample_rows)
+
+
 def split_features_target(
     df: pd.DataFrame,
     target_column: str,

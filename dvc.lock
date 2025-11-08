@@ -5,20 +5,36 @@ stages:
     deps:
     - path: configs/baseline.yaml
       hash: md5
-      md5: ff6677d1b35bd1d062cae5d79c6dc7d5
-      size: 4620
+      md5: 09418d70c6940214a47bfb8d884d4750
+      size: 5468
     - path: data/raw/application_train.csv
       hash: md5
       md5: 793a017f41fbac1dc28176b26dbab30e
       size: 166133370
+    - path: data/raw/bureau.csv
+      hash: md5
+      md5: ec0f59a16e7071de66b83217b23bb390
+      size: 170016717
+    - path: data/raw/bureau_balance.csv
+      hash: md5
+      md5: 5e815ea6eb338752724bcf46da13c602
+      size: 375592889
+    - path: data/raw/previous_application.csv
+      hash: md5
+      md5: bd1eb5f08a4700414db1742e5cc0f9fa
+      size: 404973293
     - path: src/creditrisk/config.py
       hash: md5
-      md5: 0fb9a5dffdd033bc40309ab98189b7a5
-      size: 6654
+      md5: d793fe71c5479a0b82e9c4fc6a016bd3
+      size: 7310
     - path: src/creditrisk/data/datasets.py
       hash: md5
-      md5: fa048c70521ef35a0ca4256c9f4bf819
-      size: 1474
+      md5: c6f52053ac188a5cd80628ac7ee26d80
+      size: 1766
+    - path: src/creditrisk/features/feature_store.py
+      hash: md5
+      md5: eba45814770404ed00feabc1e7572cff
+      size: 11338
     - path: src/creditrisk/features/preprocess.py
       hash: md5
       md5: b1b88832300444941670e9eca699f87d
@@ -29,8 +45,8 @@ stages:
       size: 5577
     - path: src/creditrisk/pipelines/train_baseline.py
       hash: md5
-      md5: 323c4d23c748296813ef08da2b89a6d6
-      size: 4761
+      md5: a427b6f33898769a239c00679abc5581
+      size: 7316
     params:
       configs/baseline.yaml:
         data.raw_path: data/raw/application_train.csv
@@ -41,9 +57,9 @@ stages:
     outs:
     - path: models/baseline_model.joblib
       hash: md5
-      md5: 9bfc185cf6414c1f77d3a56367760372
-      size: 1207219
+      md5: 5f1eff278135bcaf4f1cb73f61d5a7e5
+      size: 1233663
     - path: reports/metrics.json
       hash: md5
-      md5: 239316d74e1c3a1ab79acbed5208a816
-      size: 171
+      md5: 34d65d0dfad2186dbc833757b6975be9
+      size: 172

@@ -31,6 +31,10 @@ class DataConfig:
     drop_columns: List[str] = field(default_factory=lambda: ["SK_ID_CURR"])
     sample_rows: Optional[int] = None
     stratify: bool = True
+    entity_id_column: str = "SK_ID_CURR"
+    bureau_path: Optional[Path] = None
+    bureau_balance_path: Optional[Path] = None
+    previous_application_path: Optional[Path] = None
 
 
 @dataclass
@@ -146,6 +150,14 @@ class Config:
                 "drop_columns": self.data.drop_columns,
                 "sample_rows": self.data.sample_rows,
                 "stratify": self.data.stratify,
+                "entity_id_column": self.data.entity_id_column,
+                "bureau_path": str(self.data.bureau_path) if self.data.bureau_path else None,
+                "bureau_balance_path": str(self.data.bureau_balance_path)
+                if self.data.bureau_balance_path
+                else None,
+                "previous_application_path": str(self.data.previous_application_path)
+                if self.data.previous_application_path
+                else None,
             },
             "features": {
                 "categorical": self.features.categorical,
