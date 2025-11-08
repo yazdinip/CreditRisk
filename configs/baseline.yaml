@@ -1,0 +1,45 @@
+paths:
+  model_dir: models
+  model_filename: baseline_model.joblib
+  metrics_file: reports/metrics.json
+
+data:
+  raw_path: data/raw/application_train.csv
+  target_column: TARGET
+  drop_columns:
+    - SK_ID_CURR
+  sample_rows:
+  stratify: true
+
+features:
+  categorical:
+  numerical:
+  drop_columns: []
+
+training:
+  test_size: 0.2
+  random_state: 7
+  class_weight: balanced
+  n_jobs: -1
+  use_gpu: false
+  early_stopping_rounds:
+
+model:
+  type: xgboost
+  params:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 5
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_lambda: 1.0
+    reg_alpha: 0.0
+
+tracking:
+  enabled: true
+  tracking_uri: mlruns
+  experiment_name: baseline
+  run_name: baseline_xgboost
+  tags:
+    project: credit-risk
+    stage: baseline
