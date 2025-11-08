@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,7 @@ from creditrisk.features.feature_store import (
     build_feature_store_via_sql,
 )
 from creditrisk.features.preprocess import EPS_DEFAULT
+from creditrisk.validation import ValidationRunner
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,43 +32,71 @@ def _load_required_dataset(path: Path | str | None, label: str) -> pd.DataFrame:
     return df
 
 
-def build_feature_store_frame(config: Config) -> pd.DataFrame:
+def build_feature_store_frame(
+    config: Config,
+    validator: Optional[ValidationRunner] = None,
+) -> pd.DataFrame:
     """Run the SQL feature store builder and apply project-specific post-processing."""
+    validator = validator or ValidationRunner(config.validation)
     LOGGER.info("Building feature store from %s", config.data.raw_path)
     application_df = load_dataset(
         config.data.raw_path,
         sample_rows=config.data.sample_rows,
     )
+    validator.validate_application(application_df)
     application_df["TOT_MISSING_COUNT"] = application_df.isna().sum(axis=1)
+
+    bureau_df = _load_required_dataset(config.data.bureau_path, "bureau_path")
+    validator.validate_bureau(bureau_df)
+
+    bureau_balance_df = _load_required_dataset(
+        config.data.bureau_balance_path,
+        "bureau_balance_path",
+    )
+    validator.validate_bureau_balance(bureau_balance_df)
+
+    prev_application_df = _load_required_dataset(
+        config.data.previous_application_path,
+        "previous_application_path",
+    )
+    validator.validate_previous_applications(prev_application_df)
+
+    installments_df = _load_required_dataset(
+        config.data.installments_payments_path,
+        "installments_payments_path",
+    )
+    validator.validate_installments(installments_df)
+
+    credit_card_df = _load_required_dataset(
+        config.data.credit_card_balance_path,
+        "credit_card_balance_path",
+    )
+    validator.validate_credit_card(credit_card_df)
+
+    pos_cash_df = _load_required_dataset(
+        config.data.pos_cash_balance_path,
+        "pos_cash_balance_path",
+    )
+    validator.validate_pos_cash(pos_cash_df)
 
     sql_inputs = SqlFeatureStoreInputs(
         application_df=application_df,
-        bureau_df=_load_required_dataset(config.data.bureau_path, "bureau_path"),
-        bureau_balance_df=_load_required_dataset(
-            config.data.bureau_balance_path,
-            "bureau_balance_path",
-        ),
-        prev_application_df=_load_required_dataset(
-            config.data.previous_application_path,
-            "previous_application_path",
-        ),
-        installments_payments_df=_load_required_dataset(
-            config.data.installments_payments_path,
-            "installments_payments_path",
-        ),
-        credit_card_balance_df=_load_required_dataset(
-            config.data.credit_card_balance_path,
-            "credit_card_balance_path",
-        ),
-        pos_cash_balance_df=_load_required_dataset(
-            config.data.pos_cash_balance_path,
-            "pos_cash_balance_path",
-        ),
+        bureau_df=bureau_df,
+        bureau_balance_df=bureau_balance_df,
+        prev_application_df=prev_application_df,
+        installments_payments_df=installments_df,
+        credit_card_balance_df=credit_card_df,
+        pos_cash_balance_df=pos_cash_df,
     )
 
     ratio_eps = config.features.ratio_feature_eps or EPS_DEFAULT
     feature_store_df = build_feature_store_via_sql(sql_inputs, eps=ratio_eps)
     feature_store_df = _postprocess_feature_store(feature_store_df, config)
+    validator.validate_feature_store(
+        feature_store_df,
+        target_column=config.data.target_column,
+        required_feature_columns=config.features.selected_columns,
+    )
     LOGGER.info(
         "Feature store ready with shape (rows=%d, cols=%d)",
         feature_store_df.shape[0],
@@ -94,9 +123,8 @@ def _postprocess_feature_store(df: pd.DataFrame, config: Config) -> pd.DataFrame
     else:
         feature_store_df["missing_count"] = feature_store_df.isna().sum(axis=1)
 
-    drop_cols = [
-        col for col in config.data.drop_columns if col != config.data.target_column
-    ]
+    protected_columns = {config.data.target_column, config.data.entity_id_column}
+    drop_cols = [col for col in config.data.drop_columns if col not in protected_columns]
     feature_store_df = feature_store_df.drop(columns=drop_cols, errors="ignore")
 
     feature_store_df = feature_store_df.fillna(0)

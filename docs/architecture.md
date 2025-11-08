@@ -38,6 +38,14 @@ split_data  (train/test parquet)
 train_baseline -> MLflow metrics + reports/evaluation + models/baseline_model.joblib
 ```
 
+## Data Contracts & Validation
+
+- **Pandera contracts** guard each raw extract (`application`, `bureau`, `bureau_balance`, `previous_application`, `installments_payments`, `credit_card_balance`, `POS_CASH_balance`) with column-level expectations on identifiers, target encoding, monetary fields, and sentinel handling (`src/creditrisk/validation/contracts.py`).
+- **Feature store checks** ensure the engineered parquet retains the entity key (`SK_ID_CURR`), binary targets, and the configured feature list before it can fan out to downstream stages.
+- **Split guarantees** prevent duplicate customers or train/test leakage and make sure persisted splits always contain legal targets; validations run both when `split_data` creates the artifacts and inside `train_baseline` before model fitting.
+- **Model IO validation** blocks training if the scaler/model receives NaNs, infs, or missing feature columns after preprocessing; toggles live in the `validation` section of `configs/baseline.yaml`.
+- **Config-driven enforcement** lets environments relax checks (e.g., turn off raw-table contracts for quick-and-dirty experimentation) without touching the pipeline code.
+
 ## Environments & Automation
 
 - **Local dev**: run notebooks or the packaged pipelines directly; artifacts drop into `reports/` and MLflow.

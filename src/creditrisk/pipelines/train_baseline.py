@@ -32,6 +32,7 @@ from creditrisk.pipelines.data_workflow import (
     split_feature_store,
 )
 from creditrisk.utils.evaluation import save_evaluation_artifacts
+from creditrisk.validation import ValidationRunner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ def main() -> None:
     args = parse_args()
     config = Config.from_yaml(args.config)
     LOGGER.info("Loaded config from %s", args.config)
+    validator = ValidationRunner(config.validation)
 
     entity_column = config.data.entity_id_column
     train_path = Path(args.train_data) if args.train_data else Path(config.paths.train_set_path)
@@ -123,12 +125,31 @@ def main() -> None:
         if feature_store_path.exists():
             LOGGER.info("Using cached feature store at %s", feature_store_path)
             feature_store_df = load_dataframe(feature_store_path)
+            validator.validate_feature_store(
+                feature_store_df,
+                target_column=config.data.target_column,
+                required_feature_columns=config.features.selected_columns,
+            )
         else:
-            feature_store_df = build_feature_store_frame(config)
+            feature_store_df = build_feature_store_frame(config, validator=validator)
             save_dataframe(feature_store_df, feature_store_path)
         train_df, test_df = split_feature_store(feature_store_df, config)
         save_dataframe(train_df, train_path)
         save_dataframe(test_df, test_path)
+
+    validator.validate_split(
+        train_df,
+        target_column=config.data.target_column,
+        entity_column=entity_column,
+        split_name="train",
+    )
+    validator.validate_split(
+        test_df,
+        target_column=config.data.target_column,
+        entity_column=entity_column,
+        split_name="test",
+    )
+    validator.validate_split_pair(train_df, test_df, entity_column)
 
     selected_columns = resolve_selected_columns(
         train_df,
@@ -150,6 +171,8 @@ def main() -> None:
 
     X_train = X_train[selected_columns].astype(float)
     X_test = X_test[selected_columns].astype(float)
+    validator.validate_feature_matrix(X_train, selected_columns, stage_name="train_features")
+    validator.validate_feature_matrix(X_test, selected_columns, stage_name="test_features")
 
     X_balanced, y_balanced = rebalance_training_data(
         X_train,

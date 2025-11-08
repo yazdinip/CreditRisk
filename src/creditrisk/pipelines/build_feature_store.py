@@ -7,10 +7,8 @@ import logging
 from pathlib import Path
 
 from creditrisk.config import Config
-from creditrisk.pipelines.data_workflow import (
-    build_feature_store_frame,
-    save_dataframe,
-)
+from creditrisk.pipelines.data_workflow import build_feature_store_frame, save_dataframe
+from creditrisk.validation import ValidationRunner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -39,7 +37,8 @@ def main() -> None:
     args = parse_args()
     config = Config.from_yaml(args.config)
     output_path = Path(args.output) if args.output else config.paths.feature_store_path
-    feature_store_df = build_feature_store_frame(config)
+    validator = ValidationRunner(config.validation)
+    feature_store_df = build_feature_store_frame(config, validator=validator)
     save_dataframe(feature_store_df, output_path)
     LOGGER.info("Feature store persisted to %s", output_path)
 

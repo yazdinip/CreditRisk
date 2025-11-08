@@ -125,6 +125,17 @@ class InferenceConfig:
 
 
 @dataclass
+class ValidationConfig:
+    """Validation and data-contract toggles."""
+
+    enabled: bool = True
+    enforce_raw_contracts: bool = True
+    enforce_feature_store_contract: bool = True
+    enforce_split_contracts: bool = True
+    enforce_model_io_contracts: bool = True
+
+
+@dataclass
 class Config:
     """Container for all configuration sections."""
 
@@ -135,6 +146,7 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     inference: InferenceConfig = field(default_factory=InferenceConfig)
+    validation: ValidationConfig = field(default_factory=ValidationConfig)
 
     @classmethod
     def from_yaml(cls, path: Path | str) -> "Config":
@@ -155,6 +167,7 @@ class Config:
             model=build(ModelConfig, "model", ModelConfig()),
             tracking=build(TrackingConfig, "tracking", TrackingConfig()),
             inference=build(InferenceConfig, "inference", InferenceConfig()),
+            validation=build(ValidationConfig, "validation", ValidationConfig()),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -231,5 +244,12 @@ class Config:
             },
             "inference": {
                 "decision_threshold": self.inference.decision_threshold,
+            },
+            "validation": {
+                "enabled": self.validation.enabled,
+                "enforce_raw_contracts": self.validation.enforce_raw_contracts,
+                "enforce_feature_store_contract": self.validation.enforce_feature_store_contract,
+                "enforce_split_contracts": self.validation.enforce_split_contracts,
+                "enforce_model_io_contracts": self.validation.enforce_model_io_contracts,
             },
         }

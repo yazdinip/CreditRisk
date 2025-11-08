@@ -9,6 +9,8 @@ stages:
       - src/creditrisk/features/preprocess.py
       - src/creditrisk/pipelines/build_feature_store.py
       - src/creditrisk/pipelines/data_workflow.py
+      - src/creditrisk/validation/contracts.py
+      - src/creditrisk/validation/runner.py
       - data/raw/application_train.csv
       - data/raw/bureau.csv
       - data/raw/bureau_balance.csv
@@ -27,6 +29,8 @@ stages:
       - src/creditrisk/data/datasets.py
       - src/creditrisk/pipelines/split_data.py
       - src/creditrisk/pipelines/data_workflow.py
+      - src/creditrisk/validation/contracts.py
+      - src/creditrisk/validation/runner.py
       - data/processed/feature_store.parquet
     outs:
       - data/processed/train.parquet
@@ -43,6 +47,8 @@ stages:
       - src/creditrisk/pipelines/train_baseline.py
       - src/creditrisk/pipelines/data_workflow.py
       - src/creditrisk/utils/evaluation.py
+      - src/creditrisk/validation/contracts.py
+      - src/creditrisk/validation/runner.py
       - data/processed/train.parquet
       - data/processed/test.parquet
     params:

@@ -236,3 +236,10 @@ tracking:
 
 inference:
   decision_threshold: 0.5
+
+validation:
+  enabled: true
+  enforce_raw_contracts: true
+  enforce_feature_store_contract: true
+  enforce_split_contracts: true
+  enforce_model_io_contracts: true
