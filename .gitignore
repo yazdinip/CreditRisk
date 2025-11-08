@@ -14,6 +14,7 @@ data/interim/*
 data/processed/*
 data/external/*
 !data/**/.gitkeep
+!data/**/*.dvc
 
 # Model artifacts
 models/*
@@ -21,6 +22,7 @@ models/*
 
 # Reports
 reports/figures/*
+reports/*.json
 !reports/figures/.gitkeep
 
 # MLflow local runs

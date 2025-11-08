@@ -1,0 +1,49 @@
+schema: '2.0'
+stages:
+  train_baseline:
+    cmd: python -m creditrisk.pipelines.train_baseline --config configs/baseline.yaml
+    deps:
+    - path: configs/baseline.yaml
+      hash: md5
+      md5: 6494e16b9a7eab35cabc54b9f9dcaa3b
+      size: 3987
+    - path: data/raw/application_train.csv
+      hash: md5
+      md5: 793a017f41fbac1dc28176b26dbab30e
+      size: 166133370
+    - path: src/creditrisk/config.py
+      hash: md5
+      md5: ef2cf778520811c6326b9a6913327df9
+      size: 5829
+    - path: src/creditrisk/data/datasets.py
+      hash: md5
+      md5: fa048c70521ef35a0ca4256c9f4bf819
+      size: 1474
+    - path: src/creditrisk/features/preprocess.py
+      hash: md5
+      md5: a8177d3b25a12bcf578f0fc06ffdbc41
+      size: 3603
+    - path: src/creditrisk/models/baseline.py
+      hash: md5
+      md5: 493f23b1daae42049bb9148307d96ce1
+      size: 5577
+    - path: src/creditrisk/pipelines/train_baseline.py
+      hash: md5
+      md5: 323c4d23c748296813ef08da2b89a6d6
+      size: 4761
+    params:
+      configs/baseline.yaml:
+        data.raw_path: data/raw/application_train.csv
+        data.target_column: TARGET
+        model.type: xgboost
+        training.random_state: 42
+        training.test_size: 0.2
+    outs:
+    - path: models/baseline_model.joblib
+      hash: md5
+      md5: e595aa0723ec46e1613d80f27c143fb2
+      size: 1194223
+    - path: reports/metrics.json
+      hash: md5
+      md5: 82abd847514cf1d56e29eb456ae3c018
+      size: 172
