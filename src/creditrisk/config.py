@@ -35,11 +35,17 @@ class DataConfig:
 
 @dataclass
 class FeaturesConfig:
-    """Feature engineering directives."""
+    """Feature engineering directives mirroring the original notebook preprocessing."""
 
     categorical: Optional[List[str]] = None
     numerical: Optional[List[str]] = None
     drop_columns: List[str] = field(default_factory=list)
+    add_missing_count: bool = True
+    missing_threshold: float = 0.4  # drop columns with >40% missing values
+    categorical_drop: List[str] = field(
+        default_factory=lambda: ["NAME_TYPE_SUITE", "OCCUPATION_TYPE", "ORGANIZATION_TYPE"]
+    )
+    selected_columns: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -52,6 +58,9 @@ class TrainingConfig:
     n_jobs: int = -1
     use_gpu: bool = False
     early_stopping_rounds: Optional[int] = None
+    use_smote: bool = True
+    smote_sampling_strategy: float = 0.2
+    downsample_majority: bool = True
 
 
 @dataclass
@@ -134,6 +143,10 @@ class Config:
                 "categorical": self.features.categorical,
                 "numerical": self.features.numerical,
                 "drop_columns": self.features.drop_columns,
+                "add_missing_count": self.features.add_missing_count,
+                "missing_threshold": self.features.missing_threshold,
+                "categorical_drop": self.features.categorical_drop,
+                "selected_columns": self.features.selected_columns,
             },
             "training": {
                 "test_size": self.training.test_size,
@@ -142,6 +155,9 @@ class Config:
                 "n_jobs": self.training.n_jobs,
                 "use_gpu": self.training.use_gpu,
                 "early_stopping_rounds": self.training.early_stopping_rounds,
+                "use_smote": self.training.use_smote,
+                "smote_sampling_strategy": self.training.smote_sampling_strategy,
+                "downsample_majority": self.training.downsample_majority,
             },
             "model": {
                 "type": self.model.type,

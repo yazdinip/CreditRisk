@@ -28,7 +28,7 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
    ```bash
    python -m venv .venv
    .venv/Scripts/activate  # or source .venv/bin/activate on macOS/Linux
-   pip install -r requirements.txt
+   pip install -e .
    ```
 2. **Fetch the Kaggle data** and place `application_train.csv` under `data/raw/`.  
    Optionally track it with DVC so teammates can `dvc pull`.
@@ -40,6 +40,12 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
    ```
 4. **Inspect outputs** in `models/` (serialized pipeline) and `reports/metrics.json`.  
    Point `MLFLOW_TRACKING_URI` or edit `configs/baseline.yaml` if you prefer a remote server.
+
+## Baseline Recipe
+
+- Mirrors the original Colab workflow housed in `notebooks/01_home_credit_default_risk_eda.py`: drop columns with >40% missing data, remove a few high-cardinality categoricals, one-hot encode the rest, and add the per-row `missing_count` feature.
+- Uses the manual feature shortlist from that notebook (`features.selected_columns` in `configs/baseline.yaml`) so training/inference always operate on the same 90+ engineered columns.
+- Balances the classes exactly like the notebook: SMOTE with `sampling_strategy=0.2` followed by downsampling the majority class before fitting the XGBoost model (see `TrainingConfig` in `configs/baseline.yaml`).
 
 ## Tooling Highlights
 

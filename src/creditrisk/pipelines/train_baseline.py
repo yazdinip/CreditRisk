@@ -14,18 +14,20 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     mlflow = None  # type: ignore
 
-from sklearn.pipeline import Pipeline
-
 from creditrisk.config import Config
 from creditrisk.data.datasets import (
     load_dataset,
     split_features_target,
     train_test_split_df,
 )
-from creditrisk.features.preprocess import build_preprocessor
+from creditrisk.features.preprocess import (
+    preprocess_application_dataframe,
+    resolve_selected_columns,
+)
 from creditrisk.models.baseline import (
-    build_classifier,
+    build_training_pipeline,
     evaluate_classifier,
+    rebalance_training_data,
     save_model,
 )
 
@@ -86,43 +88,60 @@ def main() -> None:
     df = load_dataset(config.data.raw_path, sample_rows=config.data.sample_rows)
     LOGGER.info("Loaded %s with shape %s", config.data.raw_path, df.shape)
 
-    drop_columns = list(set(config.data.drop_columns + config.features.drop_columns))
+    processed_df = preprocess_application_dataframe(
+        df,
+        target_column=config.data.target_column,
+        feature_config=config.features,
+        drop_columns=config.data.drop_columns,
+    )
+    LOGGER.info("Post-preprocessing shape: %s", processed_df.shape)
 
     train_df, test_df = train_test_split_df(
-        df,
+        processed_df,
         target_column=config.data.target_column,
         test_size=config.training.test_size,
         random_state=config.training.random_state,
         stratify=config.data.stratify,
     )
 
-    preprocessor, _, _ = build_preprocessor(
-        train_df,
-        target_column=config.data.target_column,
-        feature_config=config.features,
-        global_drop=drop_columns,
+    selected_columns = resolve_selected_columns(
+        processed_df,
+        config.data.target_column,
+        config.features,
     )
-    classifier = build_classifier(config.model, config.training)
-    pipeline = Pipeline(
-        steps=[
-            ("preprocess", preprocessor),
-            ("model", classifier),
-        ]
-    )
+    LOGGER.info("Using %d engineered features.", len(selected_columns))
 
     X_train, y_train = split_features_target(
         train_df,
         target_column=config.data.target_column,
-        drop_columns=drop_columns,
     )
-    pipeline.fit(X_train, y_train)
-    LOGGER.info("Finished training model %s", config.model.type)
-
     X_test, y_test = split_features_target(
         test_df,
         target_column=config.data.target_column,
-        drop_columns=drop_columns,
     )
+
+    X_train = X_train[selected_columns]
+    X_test = X_test[selected_columns]
+
+    X_balanced, y_balanced = rebalance_training_data(
+        X_train,
+        y_train,
+        config.training,
+    )
+    LOGGER.info(
+        "Training rows before balancing: %d | after balancing: %d",
+        len(X_train),
+        len(X_balanced),
+    )
+
+    pipeline = build_training_pipeline(
+        selected_columns=selected_columns,
+        model_cfg=config.model,
+        training_cfg=config.training,
+    )
+    pipeline.fit(X_balanced, y_balanced)
+    LOGGER.info("Finished training model %s", config.model.type)
+
     metrics = evaluate_classifier(pipeline, X_test, y_test)
 
     save_model(pipeline, config.paths.model_path)
