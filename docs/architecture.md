@@ -3,41 +3,31 @@
 ## High-Level Flow
 
 1. **Data Layer**
-   - Raw Kaggle extracts land in `data/raw/` and are tracked with DVC (`data/raw/application_train.csv.dvc`).
-   - Deterministic preparation steps (feature selection, sampling, imputations) stay inside
-     `src/creditrisk/data` and `src/creditrisk/features`.
+   - All Kaggle extracts (application, bureau, bureau_balance, previous_application, installments_payments, credit_card_balance, POS_CASH) land in `data/raw/` and are tracked through DVC so the feature store always has deterministic inputs.
+   - `src/creditrisk/features/feature_store.py` runs the notebook’s DuckDB SQL to enrich the application table with every aggregate. Additional feature utilities live under `src/creditrisk/features`.
 2. **Training & Evaluation**
-   - `dvc repro train_baseline` calls `python -m creditrisk.pipelines.train_baseline`.
-   - The `creditrisk` package builds a preprocessing `ColumnTransformer`, instantiates the
-     requested estimator, and outputs both serialized models and metrics JSON files (both tracked via DVC).
+   - `dvc repro train_baseline` shells into `python -m creditrisk.pipelines.train_baseline`, rebuilding the DuckDB feature store, balancing, fitting, and logging evaluation outputs.
+   - Artifacts under DVC control: `models/baseline_model.joblib`, `reports/metrics.json`, and the plot bundle in `reports/evaluation/` (ROC, PR, calibration, confusion counts).
 3. **Experiment Tracking**
-   - MLflow logs parameters/metrics to `mlruns/` by default; switch `tracking_uri` in
-     `configs/baseline.yaml` to talk to a remote server (e.g., MLflow Tracking, Databricks).
-4. **Registry / Deployment (future work)**
-   - Once a run is promoted, push the artifact to a registry (MLflow model registry or S3) and
-     reuse the same package for batch scoring or real-time endpoints.
+   - MLflow logs parameters/metrics/tags to the `baseline` experiment (local `mlruns/` by default). Switch the tracking URI in `configs/baseline.yaml` or via `MLFLOW_TRACKING_URI` when pointing at a remote server.
+4. **Serving / Deployment**
+   - Batch scoring uses `creditrisk.pipelines.batch_predict`; online scoring uses the FastAPI app in `creditrisk.serve.api`.
+   - Promotion flow: approve an MLflow run, push the serialized pipeline to the desired registry/storage, and reuse the same artifact for both the batch CLI and the FastAPI container.
 
 ```
-┌──────────────┐      ┌────────────────────┐      ┌─────────────────┐      ┌──────────────────────┐
-│ data/raw/*   │ ───▶ │ creditrisk.data     │ ───▶ │ creditrisk.model │ ───▶ │ reports/ + mlflow     │
-└──────────────┘      └────────────────────┘      └─────────────────┘      └──────────────────────┘
-        ▲                      │                              │                        │
-        │                      ▼                              ▼                        ▼
-        │             creditrisk.features             models/baseline*.joblib   dashboards / alerts
+raw Kaggle CSVs  ──►  DuckDB feature store (creditrisk.features)  ──►  Training pipeline  ──►  MLflow + reports/
+                         ▲                                              │
+                         └── batch CLI / FastAPI reuse the same saved pipeline ────────────────────────────────► consumers
 ```
 
 ## Environments & Automation
 
-- **Local dev**: run notebooks or pipeline scripts directly; artifacts saved to the repo.
-- **CI**: install requirements, run unit tests, and dry-run `dvc repro` to make sure DAGs stay
-  valid. Add static checks (ruff, mypy) as the package matures.
-- **CD**: package the trained model (MLflow or custom Docker) and deploy via GitHub Actions
-  into SageMaker. Promotion gates reference MLflow metrics and validation reports under `reports/`.
+- **Local dev**: run notebooks or the packaged pipelines directly; artifacts drop into `reports/` and MLflow.
+- **CI**: install requirements, execute `pytest tests`, and dry-run `dvc repro train_baseline` to ensure the DAG stays valid whenever configs/source change.
+- **CD**: package the trained pipeline (MLflow model / Docker), wire GitHub Actions (or similar) to promote models and deploy the FastAPI service / batch job images.
 
 ## Observability & Risk
 
-- Add data contracts via Great Expectations inside `src/creditrisk/data` to block malformed inputs.
-- Capture drift metrics with Evidently and log them alongside training metrics so the MLflow run
-  already contains thresholds for monitoring.
-- The project proposal calls out canary/shadow deployments—keep the `tracking.tags.stage` up to
-  date so production runs can be filtered quickly.
+- Add data contracts (Great Expectations, Pandera) ahead of the DuckDB SQL to block malformed CSVs.
+- Capture drift metrics with Evidently and store them beside the evaluation bundle so every run has QA context even without the MLflow UI.
+- Keep MLflow tags (e.g., `tracking.tags.stage`) current; they will drive promotion logic, dashboards, and any future canary/shadow deployment strategy.
