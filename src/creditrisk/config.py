@@ -94,7 +94,7 @@ class TrackingConfig:
     """Experiment tracking settings."""
 
     enabled: bool = True
-    tracking_uri: str = "mlruns"
+    tracking_uri: str = "https://github.com/yazdinip/CreditRisk.git"
     experiment_name: str = "baseline"
     run_name: str = "baseline_xgboost"
     tags: Dict[str, str] = field(
