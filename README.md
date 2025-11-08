@@ -31,8 +31,8 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
    pip install -e .
    ```
 2. **Fetch the Kaggle data** and place `application_train.csv` under `data/raw/`.  
-   Optionally track it with DVC so teammates can `dvc pull`.
-3. **Train the baseline pipeline** (this registers a run in MLflow and writes artifacts):
+   A `.dvc` pointer already exists; run `dvc pull` if a remote is configured or replace the file locally and run `dvc add data/raw/application_train.csv`.
+3. **Train the baseline pipeline** (this registers a run in MLflow and writes artifacts under DVC control):
    ```bash
    dvc repro train_baseline
    # or without DVC
@@ -46,6 +46,7 @@ repeatable, observable workflows with open-source tools (DVC, MLflow, GitHub Act
 - Mirrors the original Colab workflow housed in `notebooks/01_home_credit_default_risk_eda.py`: drop columns with >40% missing data, remove a few high-cardinality categoricals, one-hot encode the rest, and add the per-row `missing_count` feature.
 - Uses the manual feature shortlist from that notebook (`features.selected_columns` in `configs/baseline.yaml`) so training/inference always operate on the same 90+ engineered columns.
 - Balances the classes exactly like the notebook: SMOTE with `sampling_strategy=0.2` followed by downsampling the majority class before fitting the XGBoost model (see `TrainingConfig` in `configs/baseline.yaml`).
+- The `train_baseline` DVC stage now produces the serialized model + `reports/metrics.json`, and every run logs to the `baseline` MLflow experiment (stored locally under `mlruns/` by default).
 
 ## Tooling Highlights
 

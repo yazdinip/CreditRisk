@@ -3,13 +3,13 @@
 ## High-Level Flow
 
 1. **Data Layer**
-   - Raw Kaggle extracts land in `data/raw/` and are tracked with DVC.
+   - Raw Kaggle extracts land in `data/raw/` and are tracked with DVC (`data/raw/application_train.csv.dvc`).
    - Deterministic preparation steps (feature selection, sampling, imputations) stay inside
      `src/creditrisk/data` and `src/creditrisk/features`.
 2. **Training & Evaluation**
    - `dvc repro train_baseline` calls `python -m creditrisk.pipelines.train_baseline`.
    - The `creditrisk` package builds a preprocessing `ColumnTransformer`, instantiates the
-     requested estimator, and outputs both serialized models and metrics JSON files.
+     requested estimator, and outputs both serialized models and metrics JSON files (both tracked via DVC).
 3. **Experiment Tracking**
    - MLflow logs parameters/metrics to `mlruns/` by default; switch `tracking_uri` in
      `configs/baseline.yaml` to talk to a remote server (e.g., MLflow Tracking, Databricks).

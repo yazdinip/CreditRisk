@@ -6,7 +6,7 @@
 |-------|-------|---------|-------------|
 | `data_ingest` (future) | Data & Monitoring | DVC + Great Expectations | Validate schema/dtypes, push clean parquet/duckdb tables to `data/interim`. |
 | `feature_build` (future) | Modeling | Pandas/Feature Store | Aggregate bureau/application tables, derive risk signals, persist to `data/processed`. |
-| `train_baseline` (current) | Modeling | `python -m creditrisk.pipelines.train_baseline` | Train XGBoost baseline with auto ColumnTransformer preprocessing and log metrics to MLflow. |
+| `train_baseline` (current) | Modeling | `dvc repro train_baseline` → `python -m creditrisk.pipelines.train_baseline` | Train the XGBoost baseline with notebook-style preprocessing, track artifacts with DVC, and log metrics/model to the `baseline` MLflow experiment. |
 | `evaluate` (future) | QA | Evidently, custom scripts | Compare current model vs registry champion; emit calibration and fairness diagnostics to `reports/`. |
 | `deploy` (future) | DevOps | Docker, FastAPI, SageMaker | Package the selected MLflow artifact, deploy behind an endpoint, configure alarms. |
 | `monitor` (future) | Monitoring | Evidently, CloudWatch, Grafana | Scheduled jobs scoring fresh production data, drift/latency checks, retrain triggers. |
