@@ -23,6 +23,7 @@ models/*
 # Reports
 reports/figures/*
 reports/*.json
+reports/evaluation/
 !reports/figures/.gitkeep
 
 # MLflow local runs

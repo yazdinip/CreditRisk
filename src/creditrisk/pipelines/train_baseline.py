@@ -8,8 +8,6 @@ import logging
 from pathlib import Path
 from typing import Dict
 
-import numpy as np
-import pandas as pd
 from sklearn.pipeline import Pipeline
 
 try:
@@ -19,25 +17,19 @@ except ImportError:  # pragma: no cover - optional dependency
     mlflow = None  # type: ignore
 
 from creditrisk.config import Config
-from creditrisk.data.datasets import (
-    load_dataset,
-    load_optional_dataset,
-    split_features_target,
-    train_test_split_df,
-)
-from creditrisk.features.feature_store import (
-    SqlFeatureStoreInputs,
-    build_feature_store_via_sql,
-)
-from creditrisk.features.preprocess import (
-    EPS_DEFAULT,
-    resolve_selected_columns,
-)
+from creditrisk.data.datasets import split_features_target
+from creditrisk.features.preprocess import resolve_selected_columns
 from creditrisk.models.baseline import (
     build_training_pipeline,
     evaluate_classifier,
     rebalance_training_data,
     save_model,
+)
+from creditrisk.pipelines.data_workflow import (
+    build_feature_store_frame,
+    load_dataframe,
+    save_dataframe,
+    split_feature_store,
 )
 from creditrisk.utils.evaluation import save_evaluation_artifacts
 
@@ -52,6 +44,24 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="configs/baseline.yaml",
         help="Path to the training configuration YAML.",
+    )
+    parser.add_argument(
+        "--train-data",
+        type=str,
+        default=None,
+        help="Optional override for the training split parquet path.",
+    )
+    parser.add_argument(
+        "--test-data",
+        type=str,
+        default=None,
+        help="Optional override for the test split parquet path.",
+    )
+    parser.add_argument(
+        "--feature-store",
+        type=str,
+        default=None,
+        help="Optional override for the feature store parquet path.",
     )
     return parser.parse_args()
 
@@ -95,117 +105,33 @@ def main() -> None:
     config = Config.from_yaml(args.config)
     LOGGER.info("Loaded config from %s", args.config)
 
-    df = load_dataset(config.data.raw_path, sample_rows=config.data.sample_rows)
-    LOGGER.info("Loaded %s with shape %s", config.data.raw_path, df.shape)
-    df["TOT_MISSING_COUNT"] = df.isna().sum(axis=1)
-
     entity_column = config.data.entity_id_column
+    train_path = Path(args.train_data) if args.train_data else Path(config.paths.train_set_path)
+    test_path = Path(args.test_data) if args.test_data else Path(config.paths.test_set_path)
 
-    bureau_df = load_optional_dataset(config.data.bureau_path)
-    if bureau_df is not None:
-        LOGGER.info("Loaded bureau data from %s with shape %s", config.data.bureau_path, bureau_df.shape)
+    if train_path.exists() and test_path.exists():
+        LOGGER.info("Loading cached train/test splits from %s and %s", train_path, test_path)
+        train_df = load_dataframe(train_path)
+        test_df = load_dataframe(test_path)
     else:
-        raise ValueError("bureau_path is required to run the SQL feature store builder.")
-
-    bureau_balance_df = load_optional_dataset(config.data.bureau_balance_path)
-    if bureau_balance_df is not None:
-        LOGGER.info(
-            "Loaded bureau balance data from %s with shape %s",
-            config.data.bureau_balance_path,
-            bureau_balance_df.shape,
+        LOGGER.info("Cached splits not found; rebuilding from raw data.")
+        feature_store_path = (
+            Path(args.feature_store)
+            if args.feature_store
+            else Path(config.paths.feature_store_path)
         )
-    else:
-        raise ValueError("bureau_balance_path is required to run the SQL feature store builder.")
-
-    prev_app_df = load_optional_dataset(config.data.previous_application_path)
-    if prev_app_df is not None:
-        LOGGER.info(
-            "Loaded previous applications data from %s with shape %s",
-            config.data.previous_application_path,
-            prev_app_df.shape,
-        )
-    else:
-        raise ValueError("previous_application_path is required to run the SQL feature store builder.")
-
-    installments_df = load_optional_dataset(config.data.installments_payments_path)
-    if installments_df is not None:
-        LOGGER.info(
-            "Loaded installments payments data from %s with shape %s",
-            config.data.installments_payments_path,
-            installments_df.shape,
-        )
-    else:
-        raise ValueError("installments_payments_path is required to run the SQL feature store builder.")
-
-    credit_card_df = load_optional_dataset(config.data.credit_card_balance_path)
-    if credit_card_df is not None:
-        LOGGER.info(
-            "Loaded credit card balance data from %s with shape %s",
-            config.data.credit_card_balance_path,
-            credit_card_df.shape,
-        )
-    else:
-        raise ValueError("credit_card_balance_path is required to run the SQL feature store builder.")
-
-    pos_cash_df = load_optional_dataset(config.data.pos_cash_balance_path)
-    if pos_cash_df is not None:
-        LOGGER.info(
-            "Loaded POS cash balance data from %s with shape %s",
-            config.data.pos_cash_balance_path,
-            pos_cash_df.shape,
-        )
-    else:
-        raise ValueError("pos_cash_balance_path is required to run the SQL feature store builder.")
-
-    sql_inputs = SqlFeatureStoreInputs(
-        application_df=df,
-        bureau_df=bureau_df,
-        bureau_balance_df=bureau_balance_df,
-        prev_application_df=prev_app_df,
-        installments_payments_df=installments_df,
-        credit_card_balance_df=credit_card_df,
-        pos_cash_balance_df=pos_cash_df,
-    )
-    feature_store_df = build_feature_store_via_sql(
-        sql_inputs,
-        eps=config.features.ratio_feature_eps or EPS_DEFAULT,
-    )
-    if "DAYS_EMPLOYED_ANOMALY" in feature_store_df.columns:
-        feature_store_df = feature_store_df.rename(
-            columns={"DAYS_EMPLOYED_ANOMALY": "DAYS_EMPLOYED_ANOM"}
-        )
-
-    anomaly_value = config.features.days_employed_anomaly_value
-    if "DAYS_EMPLOYED" in feature_store_df.columns:
-        feature_store_df["DAYS_EMPLOYED_REPLACED"] = feature_store_df[
-            "DAYS_EMPLOYED"
-        ].replace({anomaly_value: np.nan})
-
-    if "TOT_MISSING_COUNT" in feature_store_df.columns:
-        feature_store_df["missing_count"] = feature_store_df["TOT_MISSING_COUNT"]
-    else:
-        feature_store_df["missing_count"] = feature_store_df.isna().sum(axis=1)
-    feature_store_df = feature_store_df.drop(
-        columns=[
-            col
-            for col in config.data.drop_columns
-            if col != config.data.target_column
-        ],
-        errors="ignore",
-    )
-    feature_store_df = feature_store_df.fillna(0)
-    LOGGER.info("Feature store final shape: %s", feature_store_df.shape)
-
-    train_df, test_df = train_test_split_df(
-        feature_store_df,
-        target_column=config.data.target_column,
-        test_size=config.training.test_size,
-        random_state=config.training.random_state,
-        stratify=config.data.stratify,
-    )
+        if feature_store_path.exists():
+            LOGGER.info("Using cached feature store at %s", feature_store_path)
+            feature_store_df = load_dataframe(feature_store_path)
+        else:
+            feature_store_df = build_feature_store_frame(config)
+            save_dataframe(feature_store_df, feature_store_path)
+        train_df, test_df = split_feature_store(feature_store_df, config)
+        save_dataframe(train_df, train_path)
+        save_dataframe(test_df, test_path)
 
     selected_columns = resolve_selected_columns(
-        feature_store_df,
+        train_df,
         config.data.target_column,
         config.features,
     )

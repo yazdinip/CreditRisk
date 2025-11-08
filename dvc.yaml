@@ -1,14 +1,14 @@
 stages:
-  train_baseline:
-    cmd: python -m creditrisk.pipelines.train_baseline --config configs/baseline.yaml
+  build_feature_store:
+    cmd: python -m creditrisk.pipelines.build_feature_store --config configs/baseline.yaml
     deps:
       - configs/baseline.yaml
       - src/creditrisk/config.py
       - src/creditrisk/data/datasets.py
       - src/creditrisk/features/feature_store.py
       - src/creditrisk/features/preprocess.py
-      - src/creditrisk/models/baseline.py
-      - src/creditrisk/pipelines/train_baseline.py
+      - src/creditrisk/pipelines/build_feature_store.py
+      - src/creditrisk/pipelines/data_workflow.py
       - data/raw/application_train.csv
       - data/raw/bureau.csv
       - data/raw/bureau_balance.csv
@@ -16,12 +16,42 @@ stages:
       - data/raw/installments_payments.csv
       - data/raw/credit_card_balance.csv
       - data/raw/POS_CASH_balance.csv
+    outs:
+      - data/processed/feature_store.parquet
+
+  split_data:
+    cmd: python -m creditrisk.pipelines.split_data --config configs/baseline.yaml
+    deps:
+      - configs/baseline.yaml
+      - src/creditrisk/config.py
+      - src/creditrisk/data/datasets.py
+      - src/creditrisk/pipelines/split_data.py
+      - src/creditrisk/pipelines/data_workflow.py
+      - data/processed/feature_store.parquet
+    outs:
+      - data/processed/train.parquet
+      - data/processed/test.parquet
+
+  train_baseline:
+    cmd: python -m creditrisk.pipelines.train_baseline --config configs/baseline.yaml
+    deps:
+      - configs/baseline.yaml
+      - src/creditrisk/config.py
+      - src/creditrisk/data/datasets.py
+      - src/creditrisk/features/preprocess.py
+      - src/creditrisk/models/baseline.py
+      - src/creditrisk/pipelines/train_baseline.py
+      - src/creditrisk/pipelines/data_workflow.py
+      - src/creditrisk/utils/evaluation.py
+      - data/processed/train.parquet
+      - data/processed/test.parquet
     params:
       - configs/baseline.yaml:
           - data.raw_path
           - data.target_column
           - training.test_size
           - training.random_state
+          - training.class_weight
           - model.type
     outs:
       - models/baseline_model.joblib

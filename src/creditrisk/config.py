@@ -17,6 +17,9 @@ class PathsConfig:
     model_filename: str = "baseline_model.joblib"
     metrics_file: Path = Path("reports/metrics.json")
     reports_dir: Path = Path("reports")
+    feature_store_path: Path = Path("data/processed/feature_store.parquet")
+    train_set_path: Path = Path("data/processed/train.parquet")
+    test_set_path: Path = Path("data/processed/test.parquet")
 
     @property
     def model_path(self) -> Path:
@@ -161,6 +164,9 @@ class Config:
                 "model_filename": self.paths.model_filename,
                 "metrics_file": str(self.paths.metrics_file),
                 "reports_dir": str(self.paths.reports_dir),
+                "feature_store_path": str(self.paths.feature_store_path),
+                "train_set_path": str(self.paths.train_set_path),
+                "test_set_path": str(self.paths.test_set_path),
             },
             "data": {
                 "raw_path": str(self.data.raw_path),

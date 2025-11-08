@@ -9,20 +9,33 @@
 
 1. **Data Layer**
    - All Kaggle extracts (application, bureau, bureau_balance, previous_application, installments_payments, credit_card_balance, POS_CASH) land in `data/raw/` and are tracked through DVC so the feature store always has deterministic inputs.
-   - `src/creditrisk/features/feature_store.py` runs the notebook’s DuckDB SQL to enrich the application table with every aggregate. Additional feature utilities live under `src/creditrisk/features`.
-2. **Training & Evaluation**
-   - `dvc repro train_baseline` shells into `python -m creditrisk.pipelines.train_baseline`, rebuilding the DuckDB feature store, balancing, fitting, and logging evaluation outputs.
-   - Artifacts under DVC control: `models/baseline_model.joblib`, `reports/metrics.json`, and the plot bundle in `reports/evaluation/` (ROC, PR, calibration, confusion counts).
-3. **Experiment Tracking**
+   - `src/creditrisk/features/feature_store.py` runs the original DuckDB SQL notebook to enrich the application table with every aggregate. Additional feature utilities live under `src/creditrisk/features`.
+2. **Feature Engineering (`build_feature_store`)**
+   - `python -m creditrisk.pipelines.build_feature_store` loads all raw tables, executes the DuckDB SQL, performs the project-specific post-processing (anomaly fixes, missing counts, column drops), and writes `data/processed/feature_store.parquet`.
+   - The stage is cached by DVC, so expensive SQL only runs when configs or upstream CSVs change.
+3. **Dataset Splitting (`split_data`)**
+   - `python -m creditrisk.pipelines.split_data` consumes the feature store parquet, stratifies on `TARGET`, and materializes the deterministic splits under `data/processed/train.parquet` and `data/processed/test.parquet`.
+   - Because the splits are artifacts, every retrain/evaluation pair sees identical rows unless the upstream feature store is intentionally refreshed.
+4. **Training & Evaluation (`train_baseline`)**
+   - `python -m creditrisk.pipelines.train_baseline` now reads the cached splits, rebalances (SMOTE + downsampling), fits the pipeline, emits metrics/plots, saves the model, and logs to MLflow.
+   - DVC-tracked outputs remain: `models/baseline_model.joblib`, `reports/metrics.json`, and `reports/evaluation/`.
+5. **Experiment Tracking**
    - MLflow logs parameters/metrics/tags to the `baseline` experiment (local `mlruns/` by default). Switch the tracking URI in `configs/baseline.yaml` or via `MLFLOW_TRACKING_URI` when pointing at a remote server.
-4. **Serving / Deployment**
+6. **Serving / Deployment**
    - Batch scoring uses `creditrisk.pipelines.batch_predict`; online scoring uses the FastAPI app in `creditrisk.serve.api`.
    - Promotion flow: approve an MLflow run, push the serialized pipeline to the desired registry/storage, and reuse the same artifact for both the batch CLI and the FastAPI container.
 
 ```
-raw Kaggle CSVs  ──►  DuckDB feature store (creditrisk.features)  ──►  Training pipeline  ──►  MLflow + reports/
-                         ▲                                              │
-                         └── batch CLI / FastAPI reuse the same saved pipeline ────────────────────────────────► consumers
+raw Kaggle CSVs
+      |
+      v
+build_feature_store  (engineered parquet)
+      |
+      v
+split_data  (train/test parquet)
+      |
+      v
+train_baseline -> MLflow metrics + reports/evaluation + models/baseline_model.joblib
 ```
 
 ## Environments & Automation
