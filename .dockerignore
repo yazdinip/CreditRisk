@@ -1,0 +1,10 @@
+.git
+.gitignore
+.dvc
+.venv
+__pycache__/
+data/
+mlruns/
+reports/
+models/
+.pytest_cache/

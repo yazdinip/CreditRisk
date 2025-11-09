@@ -47,6 +47,15 @@ jobs:
       - name: Run full pipeline
         run: dvc repro train_baseline
 
+      - name: Promote model
+        if: success()
+        run: |
+          if [ -f reports/registry_promotion.json ]; then
+            python -m creditrisk.pipelines.auto_promote --config configs/baseline.yaml --stage Production
+          else
+            echo "Registry promotion report missing; skipping."
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -57,3 +66,5 @@ jobs:
             reports/post_training_validation.json
             reports/evaluation/**
             reports/data_lineage.json
+            reports/ingestion_summary.json
+            reports/registry_promotion.json

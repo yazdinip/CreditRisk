@@ -22,6 +22,7 @@ class PathsConfig:
     test_set_path: Path = Path("data/processed/test.parquet")
     lineage_file: Optional[Path] = None
     ingestion_report: Optional[Path] = None
+    registry_report: Optional[Path] = None
 
     def __post_init__(self) -> None:
         self.model_dir = Path(self.model_dir)
@@ -38,6 +39,10 @@ class PathsConfig:
             self.ingestion_report = self.reports_dir / "ingestion_summary.json"
         else:
             self.ingestion_report = Path(self.ingestion_report)
+        if self.registry_report is None:
+            self.registry_report = self.reports_dir / "registry_promotion.json"
+        else:
+            self.registry_report = Path(self.registry_report)
 
     @property
     def model_path(self) -> Path:
@@ -128,10 +133,10 @@ class TrackingConfig:
 
     enabled: bool = True
     tracking_uri: str = "mlruns"
-    experiment_name: str = "baseline"
-    run_name: str = "baseline_xgboost"
+    experiment_name: str = "creditrisk_pd"
+    run_name: str = "creditrisk_pd_xgboost"
     tags: Dict[str, str] = field(
-        default_factory=lambda: {"project": "credit-risk", "stage": "baseline"}
+        default_factory=lambda: {"project": "credit-risk", "stage": "pd-model"}
     )
 
 
@@ -147,7 +152,7 @@ class RegistryConfig:
     """Model registry behavior."""
 
     enabled: bool = False
-    model_name: str = "CreditRiskBaseline"
+    model_name: str = "CreditRiskPD"
     stage_on_register: Optional[str] = "Staging"
     promote_on_metric: Optional[str] = "roc_auc"
     promote_min_value: float = 0.75
@@ -276,6 +281,7 @@ class Config:
                 "test_set_path": str(self.paths.test_set_path),
                 "lineage_file": str(self.paths.lineage_file),
                 "ingestion_report": str(self.paths.ingestion_report),
+                "registry_report": str(self.paths.registry_report),
             },
             "data": {
                 "raw_path": str(self.data.raw_path),

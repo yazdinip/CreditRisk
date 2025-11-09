@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+import time
+from uuid import UUID
 from pathlib import Path
 from typing import Optional
 
@@ -16,8 +18,9 @@ from creditrisk.prediction.helpers import (
     build_output_frame,
     predict_with_threshold,
 )
+from creditrisk.observability.logging import generate_request_id, setup_json_logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+setup_json_logging()
 LOGGER = logging.getLogger(__name__)
 
 
@@ -45,22 +48,31 @@ def run_batch_inference(
     output_csv: Path | str,
     model_path: Optional[Path | str] = None,
     threshold: Optional[float] = None,
+    request_id: Optional[str] = None,
 ) -> pd.DataFrame:
     """Score an input CSV and persist the predictions."""
+    correlation_id = request_id or generate_request_id()
     csv_path = Path(input_csv)
     out_path = Path(output_csv)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     model_file = Path(model_path) if model_path else config.paths.model_path
-    LOGGER.info("Loading pipeline from %s", model_file)
+    LOGGER.info(
+        "Loading pipeline for batch inference",
+        extra={"request_id": correlation_id, "path": str(model_file)},
+    )
     pipeline = joblib.load(model_file)
 
-    LOGGER.info("Loading inference data from %s", csv_path)
+    LOGGER.info(
+        "Loading inference data",
+        extra={"request_id": correlation_id, "path": str(csv_path)},
+    )
     raw_df = load_dataset(csv_path)
     feature_df = raw_df.drop(columns=[config.data.target_column], errors="ignore")
 
     decision_threshold = threshold if threshold is not None else config.inference.decision_threshold
 
+    start_time = time.perf_counter()
     decisions, probabilities = predict_with_threshold(
         pipeline=pipeline,
         features=feature_df,
@@ -73,7 +85,16 @@ def run_batch_inference(
         entity_column=config.data.entity_id_column,
     )
     result_df.to_csv(out_path, index=False)
-    LOGGER.info("Wrote %d scored rows to %s", len(result_df), out_path)
+    duration_ms = (time.perf_counter() - start_time) * 1000
+    LOGGER.info(
+        "Batch inference completed",
+        extra={
+            "request_id": correlation_id,
+            "entity_count": len(result_df),
+            "path": str(out_path),
+            "duration_ms": round(duration_ms, 2),
+        },
+    )
     return result_df
 
 

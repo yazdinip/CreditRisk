@@ -120,9 +120,15 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 
 ## CI/CD
 
-- `.github/workflows/ci.yaml` runs on every PR/push. It installs dependencies, compiles the code, executes `pytest`, and validates the DVC graph via `dvc repro --dry-run train_baseline`.
-- `.github/workflows/cd.yaml` runs on `main`. It pulls datasets via DVC, executes `dvc repro train_baseline`, and uploads the model, evaluation bundle, lineage report, and validation summary as build artifacts. Configure GitHub secrets (`MLFLOW_TRACKING_URI`, `DVC_REMOTE_URL`, etc.) for remote services.
+- `.github/workflows/ci.yaml` runs on every PR/push. It installs dependencies, runs `ruff` + `bandit`, compiles the code, executes `pytest`, and validates the DVC graph via `dvc repro --dry-run train_baseline`.
+- `.github/workflows/cd.yaml` runs on `main`. It pulls datasets via DVC, executes `dvc repro train_baseline`, uploads the model, evaluation bundle, lineage + ingestion reports, and automatically promotes the latest MLflow version to Production when the validation summary passes. Configure GitHub secrets (`MLFLOW_TRACKING_URI`, `DVC_REMOTE_URL`, etc.) for remote services.
 - `docs/ci_cd.md` details the automation strategy, required secrets, and future enhancements (e.g., registry promotions).
+
+## Containers
+
+- `Dockerfile.api` builds a uvicorn-powered FastAPI image: `docker build -f Dockerfile.api -t creditrisk-api .` then `docker run -p 8080:8080 creditrisk-api`.
+- `Dockerfile.batch` packages the batch scorer (`creditrisk.pipelines.batch_predict`): `docker build -f Dockerfile.batch -t creditrisk-batch .` and pass CLI args at runtime.
+- `.dockerignore` keeps datasets, reports, and caches out of the image layers for faster reproducible builds.
 
 ---
 

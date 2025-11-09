@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from sklearn.pipeline import Pipeline
 
@@ -102,6 +103,28 @@ def dump_metrics(metrics: Dict[str, float], metrics_file: Path) -> None:
     with open(metrics_file, "w", encoding="utf-8") as fp:
         json.dump(metrics, fp, indent=2)
     LOGGER.info("Metrics written to %s", metrics_file)
+
+
+def write_registry_report(
+    report_path: Path,
+    *,
+    run_id: str,
+    version: int,
+    model_name: str,
+    metrics: Dict[str, float],
+    stage: Optional[str],
+) -> None:
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "model_version": version,
+        "model_name": model_name,
+        "target_stage": stage,
+        "metrics": metrics,
+    }
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    LOGGER.info("Registry promotion report written to %s", report_path)
 
 
 def main() -> None:
@@ -218,13 +241,28 @@ def main() -> None:
     save_model(pipeline, config.paths.model_path)
     dump_metrics(metrics, Path(config.paths.metrics_file))
     run_id = log_with_mlflow(config, metrics, pipeline)
+    registered_version: Optional[int] = None
 
     if run_id and config.registry.enabled:
         try:
             registry_manager = ModelRegistryManager(config)
-            registry_manager.register_run(run_id, metrics=metrics, tags=config.tracking.tags)
+            registered_version = registry_manager.register_run(
+                run_id,
+                metrics=metrics,
+                tags=config.tracking.tags,
+            )
         except ImportError:
             LOGGER.warning("MLflow is not installed; skipping registry registration.")
+
+    if run_id and registered_version is not None:
+        write_registry_report(
+            Path(config.paths.registry_report),
+            run_id=run_id,
+            version=registered_version,
+            model_name=config.registry.model_name,
+            metrics=metrics,
+            stage=config.registry.stage_on_register,
+        )
 
     LOGGER.info("Training pipeline completed with metrics: %s", metrics)
 
