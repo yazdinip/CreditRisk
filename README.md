@@ -1,6 +1,6 @@
 # CreditRisk Default Risk Platform
 
-Drift Detectives built this repository as the production-grade implementation of Home Credit's default-risk workflow.  
+This repository was built as the production-grade implementation of Home Credit's default-risk workflow.  
 The goal mirrors the Kaggle brief: *"Predict how capable each applicant is of repaying a loan so Home Credit can extend responsible financing to borrowers with limited credit histories."*  
 Everything here treats the Kaggle exports as stand-ins for the lender's feeds and delivers an end-to-end MLOps system: deterministic data lineage, governed training, registry-backed promotion, and deployment-ready artifacts.
 
