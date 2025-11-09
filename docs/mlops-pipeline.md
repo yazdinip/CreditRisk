@@ -4,38 +4,39 @@
 
 | Stage | Status | Owner | Tooling | Description |
 |-------|--------|-------|---------|-------------|
-| `data_ingest` | TODO | Data & Monitoring | DVC + Great Expectations | Validate schema/dtypes for each Kaggle CSV, push clean parquet/duckdb tables to `data/interim`. |
-| `feature_build` | ✅ | Modeling | DuckDB via `creditrisk.features.feature_store` | Recreate the notebook feature store (applications + bureau/bureau_balance/previous + installments + credit_card + POS cash) and emit the curated column list. |
-| `train_baseline` | ✅ | Modeling | `dvc repro train_baseline` / `python -m creditrisk.pipelines.train_baseline` | Train the XGBoost baseline with notebook-style preprocessing, log metrics + plots, and persist the pipeline to `models/`. |
-| `evaluate` | ✅ (plots) / TODO (comparisons) | QA | `creditrisk.utils.evaluation`, Evidently (planned) | Current stage saves ROC/PR/calibration/confusion artifacts to `reports/evaluation/`; next step is adding historical comparisons/drift checks. |
-| `batch_infer` | ✅ | Modeling / Ops | `python -m creditrisk.pipelines.batch_predict` | Load a saved pipeline, score CSVs, and emit `prediction` + `probability` with configurable thresholds. |
-| `serve_online` | ✅ (local) / TODO (prod) | DevOps | FastAPI + Uvicorn | FastAPI service (`creditrisk.serve.api`) exposes `/predict` + `/health`; needs Dockerization + infra wiring for prod. |
-| `deploy` | TODO | DevOps | Docker, MLflow Registry, SageMaker | Containerize the approved model, push to registry, and deploy via GitHub Actions. |
+| `data_ingest` | ✅ | Data & Monitoring | DVC + Pandera + ingestion CLI | `python -m creditrisk.pipelines.ingest_data` validates/copies each Kaggle CSV and writes checksum metadata to `reports/ingestion_summary.json` so every run knows exactly which raw snapshot it used. |
+| `feature_build` | ✅ | Modeling | DuckDB via `creditrisk.features.feature_store` | Recreates the notebook feature store (applications + bureau/bureau_balance/previous + installments + credit_card + POS cash) and emits the curated column list tracked by DVC. |
+| `train_baseline` | ✅ | Modeling | `dvc repro train_baseline` / `python -m creditrisk.pipelines.train_baseline` | Trains the XGBoost pipeline, logs metrics + plots, writes lineage + registry metadata, and persists the serialized model for downstream jobs. |
+| `evaluate` | ✅ (plots) / 🔜 (comparisons) | QA | `creditrisk.utils.evaluation`, Evidently (planned) | Saves ROC/PR/calibration/confusion artifacts to `reports/evaluation/`; next iteration will add historical comparisons/drift checks. |
+| `batch_infer` | ✅ | Modeling / Ops | `python -m creditrisk.pipelines.batch_predict` | Scores CSVs with configurable thresholds, emitting structured JSON logs (request IDs, entity counts, duration) for observability. |
+| `serve_online` | ✅ (Dockerized) / 🔜 (prod) | DevOps | FastAPI + Uvicorn + Dockerfile.api | FastAPI service exposes `/predict` + `/health`, wrapped in structured logging middleware; container image is ready for AKS/ECS/SageMaker deployment. |
+| `deploy` | 🔜 | DevOps | Docker, MLflow Registry, GitHub Actions | CD runs the full DVC pipeline, uploads artifacts, and executes the auto-promotion CLI when validations pass; next step is wiring the container push + environment rollout. |
 | `monitor` | TODO | Monitoring | Evidently, CloudWatch/Grafana | Scheduled jobs scoring fresh production data, drift/latency checks, retrain triggers. |
 
 ## Orchestration
 
-- **Local**: use DVC (`dvc repro`) to execute DAGs with reproducible params and inputs.
-- **Remote**: plug the same stages into GitHub Actions or another orchestrator (Step Functions, Airflow, Dagster) by shelling out to DVC or reusing the Python entry points directly.
+- **Local**: use DVC (`dvc repro`) to execute DAGs with reproducible params/inputs; stages reuse cached artifacts unless upstream dependencies change.
+- **Remote**: GitHub Actions CI/CD shells out to the same entry points. CD now auto-promotes MLflow versions when `reports/post_training_validation.json` reports `status: passed`.
 
 ## Configuration Strategy
 
-- All knobs live in YAML under `configs/`; DVC `params` keeps track of the values that should trigger re-runs.
-- Secrets (AWS credentials, MLflow tokens, etc.) stay out of YAML—inject them via environment variables or CI/CD secret stores.
+- All knobs live in YAML under `configs/`; DVC `params` keeps track of values that should trigger re-runs.
+- Secrets (MLflow tokens, DVC remotes, etc.) remain outside of version control—inject them through CI/CD secret stores or environment variables.
 
-## Experiment Tracking
+## Experiment Tracking & Registry
 
-- Each training run logs metrics + artifacts to MLflow with helpful tags (`project`, `stage`). Evaluation plots are also stored in git-ignored `reports/evaluation/` for offline QA.
-- Use MLflow's Model Registry (or a simple object store) to promote versions once validation succeeds. Store model cards/notes in `reports/` so reviewers get qualitative context.
+- Training logs metrics/artifacts to MLflow (`creditrisk_pd` experiment) with `project` + `stage` tags; evaluation plots, ingestion summaries, and lineage reports land under `reports/`.
+- The training stage writes `reports/registry_promotion.json` containing run id, model version, metrics, and desired stage. CD consumes that report via `python -m creditrisk.pipelines.auto_promote --stage Production` to advance versions in the `CreditRiskPD` registry as soon as governance gates pass.
 
-## Data & Model Lineage
+## Data, Model & Observability
 
-1. Raw CSV tracked with DVC remote (e.g., Azure Blob, S3, GCS).
-2. DuckDB feature store regenerated deterministically during `train_baseline`.
-3. MLflow run contains git commit SHA; add a `dvc_rev` tag when wiring CI so auditors can trace predictions back to source data.
+1. **Raw data** – tracked with DVC remote (S3/Azure/GCS) plus checksum metadata in `reports/ingestion_summary.json`.
+2. **Feature store** – deterministically regenerated; lineage recorded in `reports/data_lineage.json`.
+3. **Model runs** – MLflow records git SHA + parameters + artifacts; registry promotion report links run id to the deployed stage for audits.
+4. **Serving telemetry** – batch CLI and FastAPI service emit JSON logs with `request_id`, `entity_count`, `duration_ms`, and status codes so Splunk/CloudWatch dashboards and alerts have consistent signals.
 
 ## Next Iterations
 
-1. Add schema/quality checks prior to running the DuckDB SQL (Great Expectations or Pandera).
-2. Introduce Evidently/GX reports for drift + calibration comparisons between runs, wired into the `evaluate` stage.
-3. Containerize the FastAPI app + batch CLI, bake deployment workflows, and hook the monitoring plan from the proposal into production endpoints.
+1. Integrate Evidently/GX drift reports into the `evaluate` stage and surface them in CI/CD.
+2. Wire the Docker images into the CD pipeline to push to a registry and roll out to staging/production clusters.
+3. Layer monitoring jobs that score fresh production data, compare distributions, and trigger retraining when drift or performance decay crosses thresholds.

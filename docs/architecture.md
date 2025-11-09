@@ -7,8 +7,9 @@
 
 ## High-Level Flow
 
-1. **Data Layer**
-   - All Kaggle extracts (application, bureau, bureau_balance, previous_application, installments_payments, credit_card_balance, POS_CASH) land in `data/raw/` and are tracked through DVC so the feature store always has deterministic inputs.
+1. **Data Layer & Ingestion (`ingest_data`)**
+   - `python -m creditrisk.pipelines.ingest_data --config configs/baseline.yaml` validates every Kaggle extract listed under `ingestion.sources`, copies/downloads them when needed, and writes a checksum summary to `reports/ingestion_summary.json`.
+   - All raw CSVs live in `data/raw/` and are tracked through DVC so downstream stages always have deterministic inputs.
    - `src/creditrisk/features/feature_store.py` runs the original DuckDB SQL notebook to enrich the application table with every aggregate. Additional feature utilities live under `src/creditrisk/features`.
 2. **Feature Engineering (`build_feature_store`)**
    - CLI: `python -m creditrisk.pipelines.build_feature_store --config configs/baseline.yaml`.
@@ -24,7 +25,8 @@
    - MLflow logs parameters, metrics, artifacts, and registered versions. Local runs default to the `mlruns/` folder but any tracking URI can be configured in `configs/baseline.yaml`.
 6. **Serving / Deployment**
    - Batch scoring uses `creditrisk.pipelines.batch_predict`; online scoring uses the FastAPI app in `creditrisk.serve.api`.
-   - Promotion flow: after governance review, run `python -m creditrisk.pipelines.promote_model --version <n> --stage Production --archive-existing` to advance a registered version.
+   - Both paths now emit structured JSON logs with correlation IDs, entity counts, and latency, giving observability hooks for Splunk/CloudWatch/etc.
+   - Promotion flow: the training stage emits `reports/registry_promotion.json`, and CD invokes `python -m creditrisk.pipelines.auto_promote` to advance registered versions automatically when validations pass.
 
 ```
 raw Kaggle CSVs
@@ -59,8 +61,21 @@ train_baseline -> MLflow metrics + reports/evaluation + models/baseline_model.jo
 - **CI**: install dependencies, run `pytest`, and execute `dvc repro --run-all` (or at least `dvc repro train_baseline`) to catch contract or schema violations early. Failing validation aborts the build with actionable logs.
 - **CD**: containerize the batch CLI and FastAPI app, promote MLflow versions via the provided CLI/helper, and deploy to your platform of choice (SageMaker, Vertex, AKS). Promotions should be tied to automated tests + approval workflows.
 
-## Observability & Risk
+## Observability & Telemetry
 
-- Extend the existing Pandera contracts to cover serving payloads (batch + API) so inference requests are validated before scoring.
-- Capture drift metrics with Evidently or WhyLabs and store them next to the evaluation artifacts for longitudinal QA (link runs to drift reports via MLflow tags).
-- Use MLflow tags (`tracking.tags`) to encode governance metadata (approval status, PD bands, reviewer) so audits and dashboards have the context required for decisions.
+- **Structured logging**: `creditrisk.observability.logging` enforces JSON-formatted logs with request IDs, entity counts, durations, and status codes across both batch and API inference.
+- **Correlation IDs**: the FastAPI middleware issues/propagates `X-Request-ID` for every call, enabling log aggregation and alerting around latency/error spikes.
+- **Artifacts**: ingestion summaries, lineage reports, evaluation bundles, validation outcomes, and registry promotion metadata all land under `reports/` for downstream monitoring and audits.
+
+## Containerization & Deployment Artifacts
+
+- `Dockerfile.api` packages the FastAPI service (uvicorn) for AKS/ECS/SageMaker-style hosting.
+- `Dockerfile.batch` packages the batch CLI so scheduled scorers run in the same environment as training.
+- `.dockerignore` keeps datasets, reports, caches, and git metadata out of the images to keep builds reproducible.
+- GitHub Actions CD pulls the artifacts, runs the full pipeline, uploads the reports, and triggers MLflow promotions so environments stay in sync.
+
+## Registry & Governance
+
+- **MLflow-backed registry**: when `registry.enabled` is true, every `train_baseline` run registers its serialized pipeline under `CreditRiskPD`. Versions auto-stage when they meet the configured metric threshold.
+- **Promotion automation**: `reports/registry_promotion.json` captures the run id + model version + metrics, and `creditrisk.pipelines.auto_promote` transitions that version to Production once validations succeed, keeping CD push-button.
+- **Lineage**: registered versions reference the MLflow run id and inherit the ingestion + feature-store lineage artifacts, so auditors can trace predictions back through data snapshots and configs.
