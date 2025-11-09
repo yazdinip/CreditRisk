@@ -21,6 +21,7 @@ class PathsConfig:
     train_set_path: Path = Path("data/processed/train.parquet")
     test_set_path: Path = Path("data/processed/test.parquet")
     lineage_file: Optional[Path] = None
+    ingestion_report: Optional[Path] = None
 
     def __post_init__(self) -> None:
         self.model_dir = Path(self.model_dir)
@@ -33,6 +34,10 @@ class PathsConfig:
             self.lineage_file = self.reports_dir / "data_lineage.json"
         else:
             self.lineage_file = Path(self.lineage_file)
+        if self.ingestion_report is None:
+            self.ingestion_report = self.reports_dir / "ingestion_summary.json"
+        else:
+            self.ingestion_report = Path(self.ingestion_report)
 
     @property
     def model_path(self) -> Path:
@@ -186,6 +191,39 @@ class TestingConfig:
 
 
 @dataclass
+class IngestionSourceConfig:
+    """Definition of a single raw-data source."""
+
+    name: str
+    type: str = "filesystem"
+    uri: Optional[str] = None
+    output_path: Path = Path(".")
+    checksum: Optional[str] = None
+    decompress: bool = False
+
+    def __post_init__(self) -> None:
+        self.output_path = Path(self.output_path)
+
+
+@dataclass
+class IngestionConfig:
+    """Controls automated raw-data ingestion."""
+
+    enabled: bool = True
+    fail_on_missing: bool = True
+    sources: List[IngestionSourceConfig] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        normalized: List[IngestionSourceConfig] = []
+        for source in self.sources:
+            if isinstance(source, IngestionSourceConfig):
+                normalized.append(source)
+            else:
+                normalized.append(IngestionSourceConfig(**source))
+        self.sources = normalized
+
+
+@dataclass
 class Config:
     """Container for all configuration sections."""
 
@@ -199,6 +237,7 @@ class Config:
     registry: RegistryConfig = field(default_factory=RegistryConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     testing: TestingConfig = field(default_factory=TestingConfig)
+    ingestion: IngestionConfig = field(default_factory=IngestionConfig)
 
     @classmethod
     def from_yaml(cls, path: Path | str) -> "Config":
@@ -222,6 +261,7 @@ class Config:
             registry=build(RegistryConfig, "registry", RegistryConfig()),
             validation=build(ValidationConfig, "validation", ValidationConfig()),
             testing=build(TestingConfig, "testing", TestingConfig()),
+            ingestion=build(IngestionConfig, "ingestion", IngestionConfig()),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -235,6 +275,7 @@ class Config:
                 "train_set_path": str(self.paths.train_set_path),
                 "test_set_path": str(self.paths.test_set_path),
                 "lineage_file": str(self.paths.lineage_file),
+                "ingestion_report": str(self.paths.ingestion_report),
             },
             "data": {
                 "raw_path": str(self.data.raw_path),
@@ -322,5 +363,20 @@ class Config:
                 "require_mlflow": self.testing.require_mlflow,
                 "mlflow_metric_tolerance": self.testing.mlflow_metric_tolerance,
                 "report_filename": self.testing.report_filename,
+            },
+            "ingestion": {
+                "enabled": self.ingestion.enabled,
+                "fail_on_missing": self.ingestion.fail_on_missing,
+                "sources": [
+                    {
+                        "name": source.name,
+                        "type": source.type,
+                        "uri": source.uri,
+                        "output_path": str(source.output_path),
+                        "checksum": source.checksum,
+                        "decompress": source.decompress,
+                    }
+                    for source in self.ingestion.sources
+                ],
             },
         }

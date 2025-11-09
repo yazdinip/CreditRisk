@@ -34,3 +34,6 @@ mlruns/
 
 # Editable install metadata
 src/creditrisk.egg-info/
+
+# IDE artifacts
+.vs/

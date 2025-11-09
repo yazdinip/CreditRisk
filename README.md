@@ -57,6 +57,7 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
 
 | Stage | CLI Entry Point | Description | Artifacts |
 |-------|-----------------|-------------|-----------|
+| `ingest_data` | `python -m creditrisk.pipelines.ingest_data` | Verifies or fetches the raw Kaggle extracts defined in `configs/baseline.yaml`, captures checksums, and writes `reports/ingestion_summary.json`. | `reports/ingestion_summary.json`, validated raw CSVs |
 | `build_feature_store` | `python -m creditrisk.pipelines.build_feature_store` | Loads all seven Kaggle extracts, enforces Pandera contracts, replays the DuckDB SQL feature engineering, and persists `data/processed/feature_store.parquet`. | Feature store parquet (165 cols) |
 | `split_data` | `python -m creditrisk.pipelines.split_data` | Validates the feature store, stratifies on `TARGET`, enforces no-leakage guarantees, and writes deterministic train/test parquet files. | `data/processed/train.parquet`, `data/processed/test.parquet` |
 | `train_baseline` | `python -m creditrisk.pipelines.train_baseline` | Loads cached splits, rebalances (SMOTE + downsampling), trains the XGBoost pipeline, writes metrics/plots, logs to MLflow, and auto-registers the model. | `models/baseline_model.joblib`, `reports/metrics.json`, `reports/evaluation/`, MLflow run & registry version |

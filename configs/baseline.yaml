@@ -268,3 +268,29 @@ testing:
   require_mlflow: true
   mlflow_metric_tolerance: 0.0005
   report_filename: post_training_validation.json
+
+ingestion:
+  enabled: true
+  fail_on_missing: true
+  sources:
+    - name: application_train
+      type: existing
+      output_path: data/raw/application_train.csv
+    - name: bureau
+      type: existing
+      output_path: data/raw/bureau.csv
+    - name: bureau_balance
+      type: existing
+      output_path: data/raw/bureau_balance.csv
+    - name: previous_application
+      type: existing
+      output_path: data/raw/previous_application.csv
+    - name: installments_payments
+      type: existing
+      output_path: data/raw/installments_payments.csv
+    - name: credit_card_balance
+      type: existing
+      output_path: data/raw/credit_card_balance.csv
+    - name: pos_cash_balance
+      type: existing
+      output_path: data/raw/POS_CASH_balance.csv

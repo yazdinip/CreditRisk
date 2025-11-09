@@ -1,4 +1,13 @@
 stages:
+  ingest_data:
+    cmd: python -X faulthandler -m creditrisk.pipelines.ingest_data --config configs/baseline.yaml
+    deps:
+      - configs/baseline.yaml
+      - src/creditrisk/config.py
+      - src/creditrisk/pipelines/ingest_data.py
+    outs:
+      - reports/ingestion_summary.json
+
   build_feature_store:
     cmd: python -X faulthandler -m creditrisk.pipelines.build_feature_store --config configs/baseline.yaml
     deps:
@@ -11,6 +20,7 @@ stages:
       - src/creditrisk/pipelines/data_workflow.py
       - src/creditrisk/validation/contracts.py
       - src/creditrisk/validation/runner.py
+      - reports/ingestion_summary.json
       - data/raw/application_train.csv
       - data/raw/bureau.csv
       - data/raw/bureau_balance.csv

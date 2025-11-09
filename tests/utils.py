@@ -7,6 +7,7 @@ from creditrisk.config import (
     DataConfig,
     FeaturesConfig,
     InferenceConfig,
+    IngestionConfig,
     ModelConfig,
     PathsConfig,
     TrackingConfig,
@@ -21,6 +22,7 @@ def build_test_config(
     *,
     enable_tracking: bool = False,
     testing_config: TestingConfig | None = None,
+    ingestion_config: IngestionConfig | None = None,
 ) -> Config:
     paths = PathsConfig(
         model_dir=tmp_path / "models",
@@ -46,6 +48,11 @@ def build_test_config(
         evaluation_artifacts=[],
         require_mlflow=False,
     )
+    ingestion = ingestion_config or IngestionConfig(
+        enabled=False,
+        fail_on_missing=False,
+        sources=[],
+    )
     return Config(
         paths=paths,
         data=data,
@@ -55,4 +62,5 @@ def build_test_config(
         tracking=tracking,
         inference=inference,
         testing=testing,
+        ingestion=ingestion,
     )

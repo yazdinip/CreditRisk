@@ -40,7 +40,7 @@ Secrets are injected only in the CD job.
   - Install dependencies via `pip install -e .[dev]`.
   - `ruff check .` (if Ruff available) or `python -m compileall`.
   - `pytest`.
-  - `dvc repro --dry-run train_baseline`.
+  - `dvc repro --dry-run train_baseline` (which now includes the `ingest_data` stage to verify raw datasets are present before feature engineering).
 
 ### 2. `cd.yaml`
 
