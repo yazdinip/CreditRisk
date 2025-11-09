@@ -125,6 +125,18 @@ class InferenceConfig:
 
 
 @dataclass
+class RegistryConfig:
+    """Model registry behavior."""
+
+    enabled: bool = False
+    model_name: str = "CreditRiskBaseline"
+    stage_on_register: Optional[str] = "Staging"
+    promote_on_metric: Optional[str] = "roc_auc"
+    promote_min_value: float = 0.75
+    archive_existing_on_promote: bool = True
+
+
+@dataclass
 class ValidationConfig:
     """Validation and data-contract toggles."""
 
@@ -146,6 +158,7 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     inference: InferenceConfig = field(default_factory=InferenceConfig)
+    registry: RegistryConfig = field(default_factory=RegistryConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
 
     @classmethod
@@ -167,6 +180,7 @@ class Config:
             model=build(ModelConfig, "model", ModelConfig()),
             tracking=build(TrackingConfig, "tracking", TrackingConfig()),
             inference=build(InferenceConfig, "inference", InferenceConfig()),
+            registry=build(RegistryConfig, "registry", RegistryConfig()),
             validation=build(ValidationConfig, "validation", ValidationConfig()),
         )
 
@@ -244,6 +258,14 @@ class Config:
             },
             "inference": {
                 "decision_threshold": self.inference.decision_threshold,
+            },
+            "registry": {
+                "enabled": self.registry.enabled,
+                "model_name": self.registry.model_name,
+                "stage_on_register": self.registry.stage_on_register,
+                "promote_on_metric": self.registry.promote_on_metric,
+                "promote_min_value": self.registry.promote_min_value,
+                "archive_existing_on_promote": self.registry.archive_existing_on_promote,
             },
             "validation": {
                 "enabled": self.validation.enabled,

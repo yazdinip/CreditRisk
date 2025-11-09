@@ -46,6 +46,13 @@ train_baseline -> MLflow metrics + reports/evaluation + models/baseline_model.jo
 - **Model IO validation** blocks training if the scaler/model receives NaNs, infs, or missing feature columns after preprocessing; toggles live in the `validation` section of `configs/baseline.yaml`.
 - **Config-driven enforcement** lets environments relax checks (e.g., turn off raw-table contracts for quick-and-dirty experimentation) without touching the pipeline code.
 
+## Model Registry & Promotion
+
+- **MLflow-backed registry**: when `registry.enabled` is true (see `configs/baseline.yaml`), every successful `train_baseline` run registers the saved pipeline to the MLflow Model Registry as `registry.model_name` and uses the configured metric threshold (`registry.promote_on_metric` / `registry.promote_min_value`) to auto-stage the version (default `Staging`).
+- **ModelRegistryManager** centralizes registration and stage transitions so automation or scripts can reuse the same logic (`src/creditrisk/mlops/registry.py`).
+- **Manual promotions**: use `python -m creditrisk.pipelines.promote_model --version <n> --stage Production [--archive-existing]` to promote any registered version after governance review; the helper resolves the model name and tracking URI from config.
+- **Auditable lineage**: registry metadata ties back to the MLflow run id logged during training, so dashboards and approval workflows can link metrics, artifacts, and deployment state.
+
 ## Environments & Automation
 
 - **Local dev**: run notebooks or the packaged pipelines directly; artifacts drop into `reports/` and MLflow.

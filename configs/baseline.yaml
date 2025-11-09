@@ -237,6 +237,14 @@ tracking:
 inference:
   decision_threshold: 0.5
 
+registry:
+  enabled: true
+  model_name: CreditRiskBaseline
+  stage_on_register: Staging
+  promote_on_metric: roc_auc
+  promote_min_value: 0.78
+  archive_existing_on_promote: true
+
 validation:
   enabled: true
   enforce_raw_contracts: true

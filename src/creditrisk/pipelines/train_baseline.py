@@ -25,6 +25,7 @@ from creditrisk.models.baseline import (
     rebalance_training_data,
     save_model,
 )
+from creditrisk.mlops.registry import ModelRegistryManager
 from creditrisk.pipelines.data_workflow import (
     build_feature_store_frame,
     load_dataframe,
@@ -67,19 +68,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def log_with_mlflow(config: Config, metrics: Dict[str, float], pipeline: Pipeline) -> None:
-    """Log params/metrics/artifacts to MLflow if enabled."""
+def log_with_mlflow(config: Config, metrics: Dict[str, float], pipeline: Pipeline) -> str | None:
+    """Log params/metrics/artifacts to MLflow if enabled, returning the run id."""
     if not config.tracking.enabled:
         LOGGER.info("MLflow tracking disabled in config.")
-        return
+        return None
 
     if mlflow is None:
         LOGGER.warning("MLflow is not installed. Skipping experiment logging.")
-        return
+        return None
 
     mlflow.set_tracking_uri(config.tracking.tracking_uri)
     mlflow.set_experiment(config.tracking.experiment_name)
-    with mlflow.start_run(run_name=config.tracking.run_name):
+    with mlflow.start_run(run_name=config.tracking.run_name) as active_run:
         mlflow.log_params(
             {
                 "model_type": config.model.type,
@@ -92,6 +93,8 @@ def log_with_mlflow(config: Config, metrics: Dict[str, float], pipeline: Pipelin
         if config.tracking.tags:
             mlflow.set_tags(config.tracking.tags)
         mlflow.sklearn.log_model(pipeline, artifact_path="model")
+        return active_run.info.run_id
+    return None
 
 
 def dump_metrics(metrics: Dict[str, float], metrics_file: Path) -> None:
@@ -214,7 +217,14 @@ def main() -> None:
 
     save_model(pipeline, config.paths.model_path)
     dump_metrics(metrics, Path(config.paths.metrics_file))
-    log_with_mlflow(config, metrics, pipeline)
+    run_id = log_with_mlflow(config, metrics, pipeline)
+
+    if run_id and config.registry.enabled:
+        try:
+            registry_manager = ModelRegistryManager(config)
+            registry_manager.register_run(run_id, metrics=metrics, tags=config.tracking.tags)
+        except ImportError:
+            LOGGER.warning("MLflow is not installed; skipping registry registration.")
 
     LOGGER.info("Training pipeline completed with metrics: %s", metrics)
 
