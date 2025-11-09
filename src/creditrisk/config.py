@@ -20,6 +20,19 @@ class PathsConfig:
     feature_store_path: Path = Path("data/processed/feature_store.parquet")
     train_set_path: Path = Path("data/processed/train.parquet")
     test_set_path: Path = Path("data/processed/test.parquet")
+    lineage_file: Optional[Path] = None
+
+    def __post_init__(self) -> None:
+        self.model_dir = Path(self.model_dir)
+        self.metrics_file = Path(self.metrics_file)
+        self.reports_dir = Path(self.reports_dir)
+        self.feature_store_path = Path(self.feature_store_path)
+        self.train_set_path = Path(self.train_set_path)
+        self.test_set_path = Path(self.test_set_path)
+        if self.lineage_file is None:
+            self.lineage_file = self.reports_dir / "data_lineage.json"
+        else:
+            self.lineage_file = Path(self.lineage_file)
 
     @property
     def model_path(self) -> Path:
@@ -148,6 +161,31 @@ class ValidationConfig:
 
 
 @dataclass
+class TestingConfig:
+    """Post-training testing thresholds and expectations."""
+
+    enabled: bool = True
+    min_metrics: Dict[str, float] = field(
+        default_factory=lambda: {
+            "roc_auc": 0.75,
+            "normalized_gini": 0.50,
+        }
+    )
+    evaluation_artifacts: List[str] = field(
+        default_factory=lambda: [
+            "confusion_matrix.png",
+            "confusion_matrix.json",
+            "roc_curve.png",
+            "precision_recall_curve.png",
+            "calibration_curve.png",
+        ]
+    )
+    require_mlflow: bool = True
+    mlflow_metric_tolerance: float = 1e-4
+    report_filename: str = "validation_summary.json"
+
+
+@dataclass
 class Config:
     """Container for all configuration sections."""
 
@@ -160,6 +198,7 @@ class Config:
     inference: InferenceConfig = field(default_factory=InferenceConfig)
     registry: RegistryConfig = field(default_factory=RegistryConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
+    testing: TestingConfig = field(default_factory=TestingConfig)
 
     @classmethod
     def from_yaml(cls, path: Path | str) -> "Config":
@@ -182,6 +221,7 @@ class Config:
             inference=build(InferenceConfig, "inference", InferenceConfig()),
             registry=build(RegistryConfig, "registry", RegistryConfig()),
             validation=build(ValidationConfig, "validation", ValidationConfig()),
+            testing=build(TestingConfig, "testing", TestingConfig()),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -194,6 +234,7 @@ class Config:
                 "feature_store_path": str(self.paths.feature_store_path),
                 "train_set_path": str(self.paths.train_set_path),
                 "test_set_path": str(self.paths.test_set_path),
+                "lineage_file": str(self.paths.lineage_file),
             },
             "data": {
                 "raw_path": str(self.data.raw_path),
@@ -273,5 +314,13 @@ class Config:
                 "enforce_feature_store_contract": self.validation.enforce_feature_store_contract,
                 "enforce_split_contracts": self.validation.enforce_split_contracts,
                 "enforce_model_io_contracts": self.validation.enforce_model_io_contracts,
+            },
+            "testing": {
+                "enabled": self.testing.enabled,
+                "min_metrics": self.testing.min_metrics,
+                "evaluation_artifacts": self.testing.evaluation_artifacts,
+                "require_mlflow": self.testing.require_mlflow,
+                "mlflow_metric_tolerance": self.testing.mlflow_metric_tolerance,
+                "report_filename": self.testing.report_filename,
             },
         }

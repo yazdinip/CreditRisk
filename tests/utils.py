@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from creditrisk.config import (
@@ -9,10 +11,17 @@ from creditrisk.config import (
     PathsConfig,
     TrackingConfig,
     TrainingConfig,
+    TestingConfig,
 )
 
 
-def build_test_config(tmp_path: Path, selected_columns):
+def build_test_config(
+    tmp_path: Path,
+    selected_columns,
+    *,
+    enable_tracking: bool = False,
+    testing_config: TestingConfig | None = None,
+) -> Config:
     paths = PathsConfig(
         model_dir=tmp_path / "models",
         model_filename="model.joblib",
@@ -29,8 +38,14 @@ def build_test_config(tmp_path: Path, selected_columns):
     features = FeaturesConfig(selected_columns=list(selected_columns))
     training = TrainingConfig(class_weight=None)
     model = ModelConfig(type="logistic_regression", params={"max_iter": 200})
-    tracking = TrackingConfig(enabled=False)
+    tracking = TrackingConfig(enabled=enable_tracking)
     inference = InferenceConfig(decision_threshold=0.4)
+    testing = testing_config or TestingConfig(
+        enabled=False,
+        min_metrics={},
+        evaluation_artifacts=[],
+        require_mlflow=False,
+    )
     return Config(
         paths=paths,
         data=data,
@@ -39,4 +54,5 @@ def build_test_config(tmp_path: Path, selected_columns):
         model=model,
         tracking=tracking,
         inference=inference,
+        testing=testing,
     )

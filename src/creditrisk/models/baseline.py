@@ -144,6 +144,13 @@ def _downsample_majority_class(
     return X_bal, y_bal
 
 
+def _normalized_gini_from_auc(roc_auc: float | None) -> float | None:
+    """Return the normalized Gini coefficient given an ROC-AUC value."""
+    if roc_auc is None:
+        return None
+    return max(min(2 * roc_auc - 1, 1.0), -1.0)
+
+
 def evaluate_classifier(estimator, X_test, y_test) -> Dict[str, float]:
     """Compute standard binary classification metrics."""
     y_pred = estimator.predict(X_test)
@@ -154,12 +161,19 @@ def evaluate_classifier(estimator, X_test, y_test) -> Dict[str, float]:
         "f1": f1_score(y_test, y_pred, zero_division=0),
     }
 
+    roc_auc = None
     if hasattr(estimator, "predict_proba"):
         y_prob = estimator.predict_proba(X_test)[:, 1]
-        metrics["roc_auc"] = roc_auc_score(y_test, y_prob)
+        roc_auc = roc_auc_score(y_test, y_prob)
     elif hasattr(estimator, "decision_function"):
         scores = estimator.decision_function(X_test)
-        metrics["roc_auc"] = roc_auc_score(y_test, scores)
+        roc_auc = roc_auc_score(y_test, scores)
+
+    if roc_auc is not None:
+        metrics["roc_auc"] = roc_auc
+        normalized_gini = _normalized_gini_from_auc(roc_auc)
+        if normalized_gini is not None:
+            metrics["normalized_gini"] = normalized_gini
 
     return metrics
 

@@ -1,0 +1,59 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_TOKEN: ${{ secrets.MLFLOW_TRACKING_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Configure DVC remote
+        if: ${{ secrets.DVC_REMOTE_URL != '' }}
+        env:
+          DVC_REMOTE_URL: ${{ secrets.DVC_REMOTE_URL }}
+          DVC_REMOTE_CREDENTIALS: ${{ secrets.DVC_REMOTE_CREDENTIALS }}
+        run: |
+          dvc remote add --default cd-remote "${DVC_REMOTE_URL}" || dvc remote modify cd-remote url "${DVC_REMOTE_URL}"
+          if [ -n "${DVC_REMOTE_CREDENTIALS}" ]; then
+            printf "%s" "${DVC_REMOTE_CREDENTIALS}" >> $GITHUB_ENV
+          fi
+
+      - name: Fetch datasets via DVC
+        run: dvc pull
+
+      - name: Run full pipeline
+        run: dvc repro train_baseline
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: creditrisk-artifacts
+          path: |
+            models/baseline_model.joblib
+            reports/metrics.json
+            reports/post_training_validation.json
+            reports/evaluation/**
+            reports/data_lineage.json

@@ -251,3 +251,20 @@ validation:
   enforce_feature_store_contract: true
   enforce_split_contracts: true
   enforce_model_io_contracts: true
+
+testing:
+  enabled: true
+  min_metrics:
+    roc_auc: 0.75
+    normalized_gini: 0.50
+    precision: 0.25
+    recall: 0.40
+  evaluation_artifacts:
+    - confusion_matrix.png
+    - confusion_matrix.json
+    - roc_curve.png
+    - precision_recall_curve.png
+    - calibration_curve.png
+  require_mlflow: true
+  mlflow_metric_tolerance: 0.0005
+  report_filename: post_training_validation.json

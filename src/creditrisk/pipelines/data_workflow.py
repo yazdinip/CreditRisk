@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,7 @@ from creditrisk.features.feature_store import (
     build_feature_store_via_sql,
 )
 from creditrisk.features.preprocess import EPS_DEFAULT
+from creditrisk.utils.lineage import record_data_lineage
 from creditrisk.validation import ValidationRunner
 
 LOGGER = logging.getLogger(__name__)
@@ -39,45 +40,65 @@ def build_feature_store_frame(
     """Run the SQL feature store builder and apply project-specific post-processing."""
     validator = validator or ValidationRunner(config.validation)
     LOGGER.info("Building feature store from %s", config.data.raw_path)
+    raw_tables: Dict[str, Tuple[Path | str | None, pd.DataFrame]] = {}
     application_df = load_dataset(
         config.data.raw_path,
         sample_rows=config.data.sample_rows,
     )
     validator.validate_application(application_df)
     application_df["TOT_MISSING_COUNT"] = application_df.isna().sum(axis=1)
+    raw_tables["application"] = (config.data.raw_path, application_df)
 
     bureau_df = _load_required_dataset(config.data.bureau_path, "bureau_path")
     validator.validate_bureau(bureau_df)
+    raw_tables["bureau"] = (config.data.bureau_path, bureau_df)
 
     bureau_balance_df = _load_required_dataset(
         config.data.bureau_balance_path,
         "bureau_balance_path",
     )
     validator.validate_bureau_balance(bureau_balance_df)
+    raw_tables["bureau_balance"] = (config.data.bureau_balance_path, bureau_balance_df)
 
     prev_application_df = _load_required_dataset(
         config.data.previous_application_path,
         "previous_application_path",
     )
     validator.validate_previous_applications(prev_application_df)
+    raw_tables["previous_application"] = (
+        config.data.previous_application_path,
+        prev_application_df,
+    )
 
     installments_df = _load_required_dataset(
         config.data.installments_payments_path,
         "installments_payments_path",
     )
     validator.validate_installments(installments_df)
+    raw_tables["installments_payments"] = (
+        config.data.installments_payments_path,
+        installments_df,
+    )
 
     credit_card_df = _load_required_dataset(
         config.data.credit_card_balance_path,
         "credit_card_balance_path",
     )
     validator.validate_credit_card(credit_card_df)
+    raw_tables["credit_card_balance"] = (
+        config.data.credit_card_balance_path,
+        credit_card_df,
+    )
 
     pos_cash_df = _load_required_dataset(
         config.data.pos_cash_balance_path,
         "pos_cash_balance_path",
     )
     validator.validate_pos_cash(pos_cash_df)
+    raw_tables["pos_cash_balance"] = (
+        config.data.pos_cash_balance_path,
+        pos_cash_df,
+    )
 
     sql_inputs = SqlFeatureStoreInputs(
         application_df=application_df,
@@ -96,6 +117,11 @@ def build_feature_store_frame(
         feature_store_df,
         target_column=config.data.target_column,
         required_feature_columns=config.features.selected_columns,
+    )
+    record_data_lineage(
+        raw_tables=raw_tables,
+        feature_store_df=feature_store_df,
+        output_path=config.paths.lineage_file,
     )
     LOGGER.info(
         "Feature store ready with shape (rows=%d, cols=%d)",

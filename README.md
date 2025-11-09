@@ -117,6 +117,12 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 - **Deployment hooks**: batch CLI + FastAPI (`creditrisk.serve.api`) reuse the saved sklearn pipeline and decision threshold; a promotion CLI bridges registry stages into deployment workflows.
 - **Tests**: run `pytest tests` before merge to ensure helper modules and APIs stay healthy.
 
+## CI/CD
+
+- `.github/workflows/ci.yaml` runs on every PR/push. It installs dependencies, compiles the code, executes `pytest`, and validates the DVC graph via `dvc repro --dry-run train_baseline`.
+- `.github/workflows/cd.yaml` runs on `main`. It pulls datasets via DVC, executes `dvc repro train_baseline`, and uploads the model, evaluation bundle, lineage report, and validation summary as build artifacts. Configure GitHub secrets (`MLFLOW_TRACKING_URI`, `DVC_REMOTE_URL`, etc.) for remote services.
+- `docs/ci_cd.md` details the automation strategy, required secrets, and future enhancements (e.g., registry promotions).
+
 ---
 
 ## Next Steps
