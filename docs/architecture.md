@@ -11,19 +11,20 @@
    - All Kaggle extracts (application, bureau, bureau_balance, previous_application, installments_payments, credit_card_balance, POS_CASH) land in `data/raw/` and are tracked through DVC so the feature store always has deterministic inputs.
    - `src/creditrisk/features/feature_store.py` runs the original DuckDB SQL notebook to enrich the application table with every aggregate. Additional feature utilities live under `src/creditrisk/features`.
 2. **Feature Engineering (`build_feature_store`)**
-   - `python -m creditrisk.pipelines.build_feature_store` loads all raw tables, executes the DuckDB SQL, performs the project-specific post-processing (anomaly fixes, missing counts, column drops), and writes `data/processed/feature_store.parquet`.
-   - The stage is cached by DVC, so expensive SQL only runs when configs or upstream CSVs change.
+   - CLI: `python -m creditrisk.pipelines.build_feature_store --config configs/baseline.yaml`.
+   - Responsibilities: load the raw tables, enforce Pandera contracts, execute the DuckDB SQL, apply anomaly/missingness fixes, and save `data/processed/feature_store.parquet`.
+   - The stage is cached by DVC, so future repros reuse the parquet unless upstream deps change.
 3. **Dataset Splitting (`split_data`)**
-   - `python -m creditrisk.pipelines.split_data` consumes the feature store parquet, stratifies on `TARGET`, and materializes the deterministic splits under `data/processed/train.parquet` and `data/processed/test.parquet`.
-   - Because the splits are artifacts, every retrain/evaluation pair sees identical rows unless the upstream feature store is intentionally refreshed.
+   - CLI: `python -m creditrisk.pipelines.split_data --config configs/baseline.yaml`.
+   - Responsibilities: validate the feature store, stratify on `TARGET`, block duplicate entity IDs or leakage, and persist `data/processed/train.parquet` and `data/processed/test.parquet`.
 4. **Training & Evaluation (`train_baseline`)**
-   - `python -m creditrisk.pipelines.train_baseline` now reads the cached splits, rebalances (SMOTE + downsampling), fits the pipeline, emits metrics/plots, saves the model, and logs to MLflow.
-   - DVC-tracked outputs remain: `models/baseline_model.joblib`, `reports/metrics.json`, and `reports/evaluation/`.
+   - CLI: `python -m creditrisk.pipelines.train_baseline --config configs/baseline.yaml`.
+   - Responsibilities: load cached splits, rebalance (SMOTE + downsampling), fit the sklearn pipeline, save the serialized model + metrics + plots, log to MLflow, and (optionally) register the run in the MLflow Model Registry.
 5. **Experiment Tracking**
-   - MLflow logs parameters/metrics/tags to the `baseline` experiment (local `mlruns/` by default). Switch the tracking URI in `configs/baseline.yaml` or via `MLFLOW_TRACKING_URI` when pointing at a remote server.
+   - MLflow logs parameters, metrics, artifacts, and registered versions. Local runs default to the `mlruns/` folder but any tracking URI can be configured in `configs/baseline.yaml`.
 6. **Serving / Deployment**
    - Batch scoring uses `creditrisk.pipelines.batch_predict`; online scoring uses the FastAPI app in `creditrisk.serve.api`.
-   - Promotion flow: approve an MLflow run, push the serialized pipeline to the desired registry/storage, and reuse the same artifact for both the batch CLI and the FastAPI container.
+   - Promotion flow: after governance review, run `python -m creditrisk.pipelines.promote_model --version <n> --stage Production --archive-existing` to advance a registered version.
 
 ```
 raw Kaggle CSVs
@@ -40,27 +41,26 @@ train_baseline -> MLflow metrics + reports/evaluation + models/baseline_model.jo
 
 ## Data Contracts & Validation
 
-- **Pandera contracts** guard each raw extract (`application`, `bureau`, `bureau_balance`, `previous_application`, `installments_payments`, `credit_card_balance`, `POS_CASH_balance`) with column-level expectations on identifiers, target encoding, monetary fields, and sentinel handling (`src/creditrisk/validation/contracts.py`).
-- **Feature store checks** ensure the engineered parquet retains the entity key (`SK_ID_CURR`), binary targets, and the configured feature list before it can fan out to downstream stages.
-- **Split guarantees** prevent duplicate customers or train/test leakage and make sure persisted splits always contain legal targets; validations run both when `split_data` creates the artifacts and inside `train_baseline` before model fitting.
-- **Model IO validation** blocks training if the scaler/model receives NaNs, infs, or missing feature columns after preprocessing; toggles live in the `validation` section of `configs/baseline.yaml`.
-- **Config-driven enforcement** lets environments relax checks (e.g., turn off raw-table contracts for quick-and-dirty experimentation) without touching the pipeline code.
+- **Pandera contracts** guard every raw table plus engineered outputs (`src/creditrisk/validation/contracts.py`). They validate key uniqueness, allowable sentinel values (e.g., `DAYS_EMPLOYED` = 365243), numeric ranges, and binary targets.
+- **ValidationRunner** wires those contracts into each stage and adds business checks (duplicate IDs, train/test overlap, missing engineered columns, NaN/inf detection). See `src/creditrisk/validation/runner.py`.
+- **Config toggles** (`validation.*` in `configs/baseline.yaml`) allow you to disable specific checks in exploratory environments without editing the pipeline code.
+- **Fast failure semantics** mean schema drift or missingness surges fail before a model trains, keeping nightly SLOs intact.
 
 ## Model Registry & Promotion
 
-- **MLflow-backed registry**: when `registry.enabled` is true (see `configs/baseline.yaml`), every successful `train_baseline` run registers the saved pipeline to the MLflow Model Registry as `registry.model_name` and uses the configured metric threshold (`registry.promote_on_metric` / `registry.promote_min_value`) to auto-stage the version (default `Staging`).
-- **ModelRegistryManager** centralizes registration and stage transitions so automation or scripts can reuse the same logic (`src/creditrisk/mlops/registry.py`).
-- **Manual promotions**: use `python -m creditrisk.pipelines.promote_model --version <n> --stage Production [--archive-existing]` to promote any registered version after governance review; the helper resolves the model name and tracking URI from config.
-- **Auditable lineage**: registry metadata ties back to the MLflow run id logged during training, so dashboards and approval workflows can link metrics, artifacts, and deployment state.
+- **MLflow-backed registry**: when `registry.enabled` is true, every `train_baseline` run registers its serialized pipeline under `registry.model_name`. Versions are automatically staged when they meet the configured metric threshold.
+- **ModelRegistryManager** (`src/creditrisk/mlops/registry.py`) encapsulates registration, metric-based staging, and manual promotions. It also provisions the registered model if it does not exist.
+- **Promotion CLI**: `python -m creditrisk.pipelines.promote_model --version <n> --stage Production --archive-existing` triggers stage transitions after governance review or automated tests complete.
+- **Lineage**: each registered version references the MLflow run id used to train it, so audits can trace metrics, artifacts, and configs that produced the deployed model.
 
 ## Environments & Automation
 
-- **Local dev**: run notebooks or the packaged pipelines directly; artifacts drop into `reports/` and MLflow.
-- **CI**: install requirements, execute `pytest tests`, and dry-run `dvc repro train_baseline` to ensure the DAG stays valid whenever configs/source change.
-- **CD**: package the trained pipeline (MLflow model / Docker), wire GitHub Actions (or similar) to promote models and deploy the FastAPI service / batch job images.
+- **Local dev**: run the modular CLIs (`build_feature_store`, `split_data`, `train_baseline`) directly or via `dvc repro`. Artifacts are tracked in DVC and MLflow, so you can iterate safely.
+- **CI**: install dependencies, run `pytest`, and execute `dvc repro --run-all` (or at least `dvc repro train_baseline`) to catch contract or schema violations early. Failing validation aborts the build with actionable logs.
+- **CD**: containerize the batch CLI and FastAPI app, promote MLflow versions via the provided CLI/helper, and deploy to your platform of choice (SageMaker, Vertex, AKS). Promotions should be tied to automated tests + approval workflows.
 
 ## Observability & Risk
 
-- Add data contracts (Great Expectations, Pandera) ahead of the DuckDB SQL to block malformed CSVs.
-- Capture drift metrics with Evidently and store them beside the evaluation bundle so every run has QA context even without the MLflow UI.
-- Keep MLflow tags (e.g., `tracking.tags.stage`) current; they will drive promotion logic, dashboards, and any future canary/shadow deployment strategy.
+- Extend the existing Pandera contracts to cover serving payloads (batch + API) so inference requests are validated before scoring.
+- Capture drift metrics with Evidently or WhyLabs and store them next to the evaluation artifacts for longitudinal QA (link runs to drift reports via MLflow tags).
+- Use MLflow tags (`tracking.tags`) to encode governance metadata (approval status, PD bands, reviewer) so audits and dashboards have the context required for decisions.
