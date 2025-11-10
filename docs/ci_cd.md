@@ -40,7 +40,7 @@ Secrets are injected only in the CD job.
   - Install dependencies via `pip install -e .`.
   - `ruff check .`, `bandit -q -r src`, and `python -m compileall`.
   - `pytest`.
-  - `dvc repro --dry-run train_baseline` (which now includes the `ingest_data` stage to verify raw datasets are present before feature engineering).
+  - `dvc repro --dry-run validate_model` (which exercises every stage, ensuring ingestion/feature/store/split/train/test/validation remain reproducible).
 
 ### 2. `cd.yaml`
 
@@ -50,7 +50,8 @@ Secrets are injected only in the CD job.
   - Configure Python/DVC.
   - Authenticate DVC remote using `DVC_REMOTE_*`.
   - `dvc pull` to get raw datasets.
-  - `dvc repro train_baseline`.
+  - `dvc repro validate_model`.
+  - `dvc repro monitor_drift`.
   - Upload artifacts:
     - `reports/metrics.json`
     - `reports/data_lineage.json`
@@ -59,6 +60,7 @@ Secrets are injected only in the CD job.
     - `reports/evaluation/**`
     - `reports/post_training_validation.json`
   - Auto-promote: run `python -m creditrisk.pipelines.auto_promote --stage Production` when `reports/registry_promotion.json` exists and the validation summary reports `status: passed`.
+  - Build/push containers: leverage `docker/build-push-action` to publish `Dockerfile.api` and `Dockerfile.batch` images to GHCR (`ghcr.io/<org>/creditrisk-{api|batch}`) tagged with both `latest` and the Git SHA so environments downstream can pull immutable artifacts.
 
 Artifacts are retained for 30 days so reviewers can download the exact model bundle.
 

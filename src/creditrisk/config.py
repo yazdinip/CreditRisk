@@ -23,6 +23,8 @@ class PathsConfig:
     lineage_file: Optional[Path] = None
     ingestion_report: Optional[Path] = None
     registry_report: Optional[Path] = None
+    drift_report: Optional[Path] = None
+    drift_dashboard: Optional[Path] = None
 
     def __post_init__(self) -> None:
         self.model_dir = Path(self.model_dir)
@@ -43,6 +45,14 @@ class PathsConfig:
             self.registry_report = self.reports_dir / "registry_promotion.json"
         else:
             self.registry_report = Path(self.registry_report)
+        if self.drift_report is None:
+            self.drift_report = self.reports_dir / "drift_report.json"
+        else:
+            self.drift_report = Path(self.drift_report)
+        if self.drift_dashboard is None:
+            self.drift_dashboard = self.reports_dir / "drift_report.html"
+        else:
+            self.drift_dashboard = Path(self.drift_dashboard)
 
     @property
     def model_path(self) -> Path:
@@ -196,6 +206,21 @@ class TestingConfig:
 
 
 @dataclass
+class MonitoringConfig:
+    """Controls automated monitoring artifacts such as drift reports."""
+
+    enabled: bool = True
+    drift_enabled: bool = True
+    backend: str = "evidently"
+    reference_sample_size: Optional[int] = None
+    current_sample_size: Optional[int] = None
+    feature_list: Optional[List[str]] = None
+    max_features: Optional[int] = 50
+    stat_test: str = "auto"
+    stat_test_threshold: float = 0.05
+
+
+@dataclass
 class IngestionSourceConfig:
     """Definition of a single raw-data source."""
 
@@ -242,6 +267,7 @@ class Config:
     registry: RegistryConfig = field(default_factory=RegistryConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     testing: TestingConfig = field(default_factory=TestingConfig)
+    monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     ingestion: IngestionConfig = field(default_factory=IngestionConfig)
 
     @classmethod
@@ -266,6 +292,7 @@ class Config:
             registry=build(RegistryConfig, "registry", RegistryConfig()),
             validation=build(ValidationConfig, "validation", ValidationConfig()),
             testing=build(TestingConfig, "testing", TestingConfig()),
+            monitoring=build(MonitoringConfig, "monitoring", MonitoringConfig()),
             ingestion=build(IngestionConfig, "ingestion", IngestionConfig()),
         )
 
@@ -282,6 +309,8 @@ class Config:
                 "lineage_file": str(self.paths.lineage_file),
                 "ingestion_report": str(self.paths.ingestion_report),
                 "registry_report": str(self.paths.registry_report),
+                "drift_report": str(self.paths.drift_report),
+                "drift_dashboard": str(self.paths.drift_dashboard),
             },
             "data": {
                 "raw_path": str(self.data.raw_path),
@@ -369,6 +398,17 @@ class Config:
                 "require_mlflow": self.testing.require_mlflow,
                 "mlflow_metric_tolerance": self.testing.mlflow_metric_tolerance,
                 "report_filename": self.testing.report_filename,
+            },
+            "monitoring": {
+                "enabled": self.monitoring.enabled,
+                "drift_enabled": self.monitoring.drift_enabled,
+                "backend": self.monitoring.backend,
+                "reference_sample_size": self.monitoring.reference_sample_size,
+                "current_sample_size": self.monitoring.current_sample_size,
+                "feature_list": self.monitoring.feature_list,
+                "max_features": self.monitoring.max_features,
+                "stat_test": self.monitoring.stat_test,
+                "stat_test_threshold": self.monitoring.stat_test_threshold,
             },
             "ingestion": {
                 "enabled": self.ingestion.enabled,

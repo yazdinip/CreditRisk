@@ -269,6 +269,17 @@ testing:
   mlflow_metric_tolerance: 0.0005
   report_filename: post_training_validation.json
 
+monitoring:
+  enabled: true
+  drift_enabled: true
+  backend: evidently
+  reference_sample_size: 50000
+  current_sample_size: null
+  feature_list: []
+  max_features: 50
+  stat_test: ks
+  stat_test_threshold: 0.05
+
 ingestion:
   enabled: true
   fail_on_missing: true

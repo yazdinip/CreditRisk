@@ -1,3 +1,4 @@
 /evaluation
 /test_predictions.parquet
 /test_evaluation
+/drift_report.html

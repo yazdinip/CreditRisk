@@ -9,6 +9,7 @@ from creditrisk.config import (
     InferenceConfig,
     IngestionConfig,
     ModelConfig,
+    MonitoringConfig,
     PathsConfig,
     TrackingConfig,
     TrainingConfig,
@@ -23,6 +24,7 @@ def build_test_config(
     enable_tracking: bool = False,
     testing_config: TestingConfig | None = None,
     ingestion_config: IngestionConfig | None = None,
+    monitoring_config: MonitoringConfig | None = None,
 ) -> Config:
     paths = PathsConfig(
         model_dir=tmp_path / "models",
@@ -53,6 +55,7 @@ def build_test_config(
         fail_on_missing=False,
         sources=[],
     )
+    monitoring = monitoring_config or MonitoringConfig(enabled=False, drift_enabled=False)
     return Config(
         paths=paths,
         data=data,
@@ -62,5 +65,6 @@ def build_test_config(
         tracking=tracking,
         inference=inference,
         testing=testing,
+        monitoring=monitoring,
         ingestion=ingestion,
     )

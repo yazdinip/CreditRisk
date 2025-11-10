@@ -102,3 +102,17 @@ stages:
       - mlruns
     outs:
       - reports/post_training_validation.json
+
+  monitor_drift:
+    cmd: python -X faulthandler -m creditrisk.monitoring.drift --config configs/baseline.yaml
+    deps:
+      - configs/baseline.yaml
+      - src/creditrisk/config.py
+      - src/creditrisk/monitoring/__init__.py
+      - src/creditrisk/monitoring/drift.py
+      - src/creditrisk/pipelines/data_workflow.py
+      - data/processed/train.parquet
+      - data/processed/test.parquet
+    outs:
+      - reports/drift_report.json
+      - reports/drift_report.html

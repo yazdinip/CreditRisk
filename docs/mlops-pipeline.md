@@ -11,7 +11,7 @@
 | `batch_infer` | ✅ | Modeling / Ops | `python -m creditrisk.pipelines.batch_predict` | Scores CSVs with configurable thresholds, emitting structured JSON logs (request IDs, entity counts, duration) for observability. |
 | `serve_online` | ✅ (Dockerized) / 🔜 (prod) | DevOps | FastAPI + Uvicorn + Dockerfile.api | FastAPI service exposes `/predict` + `/health`, wrapped in structured logging middleware; container image is ready for AKS/ECS/SageMaker deployment. |
 | `deploy` | 🔜 | DevOps | Docker, MLflow Registry, GitHub Actions | CD runs the full DVC pipeline, uploads artifacts, and executes the auto-promotion CLI when validations pass; next step is wiring the container push + environment rollout. |
-| `monitor` | TODO | Monitoring | Evidently, CloudWatch/Grafana | Scheduled jobs scoring fresh production data, drift/latency checks, retrain triggers. |
+| `monitor` | ✅ (drift) | Monitoring | Evidently, CloudWatch/Grafana | `python -m creditrisk.monitoring.drift` compares persisted train vs. test splits and emits HTML/JSON drift dashboards; production telemetry ingestion remains to be wired into CloudWatch/Grafana. |
 
 ## Orchestration
 
@@ -32,11 +32,12 @@
 
 1. **Raw data** – tracked with DVC remote (S3/Azure/GCS) plus checksum metadata in `reports/ingestion_summary.json`.
 2. **Feature store** – deterministically regenerated; lineage recorded in `reports/data_lineage.json`.
-3. **Model runs** – MLflow records git SHA + parameters + artifacts; registry promotion report links run id to the deployed stage for audits.
-4. **Serving telemetry** – batch CLI and FastAPI service emit JSON logs with `request_id`, `entity_count`, `duration_ms`, and status codes so Splunk/CloudWatch dashboards and alerts have consistent signals.
+3. **Monitoring** – Evidently drift outputs (`reports/drift_report.json/html`) plus structured serving logs feed the observability layer; next iteration pipes those into dashboards/alerts.
+4. **Model runs** – MLflow records git SHA + parameters + artifacts; registry promotion report links run id to the deployed stage for audits.
+5. **Serving telemetry** – batch CLI and FastAPI service emit JSON logs with `request_id`, `entity_count`, `duration_ms`, and status codes so Splunk/CloudWatch dashboards and alerts have consistent signals.
 
 ## Next Iterations
 
-1. Integrate Evidently/GX drift reports into the `evaluate` stage and surface them in CI/CD.
-2. Wire the Docker images into the CD pipeline to push to a registry and roll out to staging/production clusters.
+1. Pipe Evidently drift metrics + serving logs into dashboards/alerting (CloudWatch/Grafana) and define retraining triggers.
+2. Extend the CD job to roll the freshly published container images into staging/prod clusters with smoke tests.
 3. Layer monitoring jobs that score fresh production data, compare distributions, and trigger retraining when drift or performance decay crosses thresholds.

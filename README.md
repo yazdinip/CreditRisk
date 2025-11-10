@@ -34,16 +34,20 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
 
 3. **Run the full pipeline**
    ```bash
-   dvc repro train_baseline
+   dvc repro validate_model
    ```
    This executes the modular DAG:
    ```
-   data/raw/*.dvc -> build_feature_store -> split_data -> train_baseline
+   ingest_data -> build_feature_store -> split_data -> train_baseline -> test_model -> validate_model
+                                                        \
+                                                         -> monitor_drift
    ```
+   `ingest_data` validates or fetches the raw Kaggle extracts and writes `reports/ingestion_summary.json` so downstream lineage captures the exact snapshot used for the run.
    Outputs land in:
    - `data/processed/*.parquet` (feature store + deterministic splits)
    - `models/baseline_model.joblib`
-   - `reports/metrics.json` and `reports/evaluation/`
+   - `reports/metrics.json`, `reports/test_metrics.json`, and `reports/evaluation/`
+   - `reports/drift_report.json` + `reports/drift_report.html`
    - `mlruns/` (MLflow experiment + registry metadata)
 
 4. **Inspect / iterate**
@@ -61,6 +65,9 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
 | `build_feature_store` | `python -m creditrisk.pipelines.build_feature_store` | Loads all seven Kaggle extracts, enforces Pandera contracts, replays the DuckDB SQL feature engineering, and persists `data/processed/feature_store.parquet`. | Feature store parquet (165 cols) |
 | `split_data` | `python -m creditrisk.pipelines.split_data` | Validates the feature store, stratifies on `TARGET`, enforces no-leakage guarantees, and writes deterministic train/test parquet files. | `data/processed/train.parquet`, `data/processed/test.parquet` |
 | `train_baseline` | `python -m creditrisk.pipelines.train_baseline` | Loads cached splits, rebalances (SMOTE + downsampling), trains the XGBoost pipeline, writes metrics/plots, logs to MLflow, and auto-registers the model. | `models/baseline_model.joblib`, `reports/metrics.json`, `reports/evaluation/`, MLflow run & registry version |
+| `test_model` | `python -m creditrisk.testing.test_dataset` | Scores the held-out test set, persists per-entity predictions, and generates evaluation plots. | `reports/test_metrics.json`, `reports/test_evaluation/`, `reports/test_predictions.parquet` |
+| `validate_model` | `python -m creditrisk.testing.post_training` | Applies governance checks (metric thresholds, artifact integrity, lineage presence, MLflow alignment) before promotion. | `reports/post_training_validation.json` |
+| `monitor_drift` | `python -m creditrisk.monitoring.drift` | Runs Evidently’s drift preset on the persisted train vs. test splits to quantify distribution shifts and emit HTML/JSON dashboards. | `reports/drift_report.json`, `reports/drift_report.html` |
 
 You can invoke any stage independently (e.g., `dvc repro split_data`) for debugging or lightweight experimentation.
 
@@ -120,8 +127,8 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 
 ## CI/CD
 
-- `.github/workflows/ci.yaml` runs on every PR/push. It installs dependencies, runs `ruff` + `bandit`, compiles the code, executes `pytest`, and validates the DVC graph via `dvc repro --dry-run train_baseline`.
-- `.github/workflows/cd.yaml` runs on `main`. It pulls datasets via DVC, executes `dvc repro train_baseline`, uploads the model, evaluation bundle, lineage + ingestion reports, and automatically promotes the latest MLflow version to Production when the validation summary passes. Configure GitHub secrets (`MLFLOW_TRACKING_URI`, `DVC_REMOTE_URL`, etc.) for remote services.
+- `.github/workflows/ci.yaml` runs on every PR/push. It installs dependencies, runs `ruff` + `bandit`, compiles the code, executes `pytest`, and validates the DVC graph via `dvc repro --dry-run validate_model`.
+- `.github/workflows/cd.yaml` runs on `main`. It pulls datasets via DVC, executes `dvc repro validate_model` followed by `dvc repro monitor_drift`, uploads the expanded observability bundle (metrics, lineage, ingestion, drift), and automatically promotes the latest MLflow version to Production when the validation summary passes. The job also builds and pushes the batch + API Docker images to GHCR for deployment.
 - `docs/ci_cd.md` details the automation strategy, required secrets, and future enhancements (e.g., registry promotions).
 
 ## Containers

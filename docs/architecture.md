@@ -32,13 +32,18 @@
 raw Kaggle CSVs
       |
       v
+ingest_data  (reports/ingestion_summary.json)
+      |
+      v
 build_feature_store  (engineered parquet)
       |
       v
 split_data  (train/test parquet)
       |
+      +------> monitor_drift (reports/drift_report.{json,html})
+      |
       v
-train_baseline -> MLflow metrics + reports/evaluation + models/baseline_model.joblib
+train_baseline -> test_model -> validate_model -> post-training reports + MLflow + models
 ```
 
 ## Data Contracts & Validation
@@ -57,13 +62,13 @@ train_baseline -> MLflow metrics + reports/evaluation + models/baseline_model.jo
 
 ## Environments & Automation
 
-- **Local dev**: run the modular CLIs (`build_feature_store`, `split_data`, `train_baseline`) directly or via `dvc repro`. Artifacts are tracked in DVC and MLflow, so you can iterate safely.
+- **Local dev**: run the modular CLIs (`ingest_data`, `build_feature_store`, `split_data`, `train_baseline`) directly or via `dvc repro`. Artifacts are tracked in DVC and MLflow, so you can iterate safely.
 - **CI**: install dependencies, run `pytest`, and execute `dvc repro --run-all` (or at least `dvc repro train_baseline`) to catch contract or schema violations early. Failing validation aborts the build with actionable logs.
 - **CD**: containerize the batch CLI and FastAPI app, promote MLflow versions via the provided CLI/helper, and deploy to your platform of choice (SageMaker, Vertex, AKS). Promotions should be tied to automated tests + approval workflows.
 
 ## Observability & Telemetry
 
-- **Structured logging**: `creditrisk.observability.logging` enforces JSON-formatted logs with request IDs, entity counts, durations, and status codes across both batch and API inference.
+- **Structured logging**: `creditrisk.observability.logging` enforces JSON-formatted logs with request IDs, entity counts, durations, and status codes across both batch and API inference. Evidently drift reports (`reports/drift_report.json` + `.html`) now ride alongside lineage/ingestion artifacts for nightly health checks.
 - **Correlation IDs**: the FastAPI middleware issues/propagates `X-Request-ID` for every call, enabling log aggregation and alerting around latency/error spikes.
 - **Artifacts**: ingestion summaries, lineage reports, evaluation bundles, validation outcomes, and registry promotion metadata all land under `reports/` for downstream monitoring and audits.
 
@@ -71,6 +76,7 @@ train_baseline -> MLflow metrics + reports/evaluation + models/baseline_model.jo
 
 - `Dockerfile.api` packages the FastAPI service (uvicorn) for AKS/ECS/SageMaker-style hosting.
 - `Dockerfile.batch` packages the batch CLI so scheduled scorers run in the same environment as training.
+- The CD workflow logs in to GHCR, builds both images via Buildx, and pushes tags for `latest` and the commit SHA so downstream environments can pull immutable versions.
 - `.dockerignore` keeps datasets, reports, caches, and git metadata out of the images to keep builds reproducible.
 - GitHub Actions CD pulls the artifacts, runs the full pipeline, uploads the reports, and triggers MLflow promotions so environments stay in sync.
 
