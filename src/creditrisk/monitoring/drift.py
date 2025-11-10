@@ -186,14 +186,14 @@ def generate_drift_report(
         return summary
 
     try:
-        summary, payload, html_content = _generate_evidently_report(
+        summary, payload = _generate_evidently_report(
             reference,
             current,
             stat_test=config.monitoring.stat_test,
             stat_threshold=config.monitoring.stat_test_threshold,
+            html_path=html_path,
         )
         json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        html_path.write_text(html_content, encoding="utf-8")
         return summary
     except Exception as exc:  # pylint: disable=broad-except
         LOGGER.exception("Evidently drift report failed; falling back to KS summary.")
@@ -215,7 +215,8 @@ def _generate_evidently_report(
     *,
     stat_test: str,
     stat_threshold: float,
-) -> Tuple[DriftReportSummary, dict, str]:
+    html_path: Path,
+) -> Tuple[DriftReportSummary, dict]:
     if not (_EVIDENTLY_AVAILABLE and Report and ColumnMapping and DataDriftPreset):
         raise RuntimeError("Evidently is not available.")
 
@@ -241,14 +242,14 @@ def _generate_evidently_report(
         summary.share_drifted_columns * 100,
         summary.drifted_columns,
     )
-    html_content = report.as_html()
+    report.save_html(str(html_path))
     json_payload.update(
         {
             "backend": "evidently",
             "summary": summary.to_dict(),
         }
     )
-    return summary, json_payload, html_content
+    return summary, json_payload
 
 
 def _generate_fallback_report(
