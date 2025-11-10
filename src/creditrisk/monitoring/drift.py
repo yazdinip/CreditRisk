@@ -107,6 +107,19 @@ def _maybe_sample(df: pd.DataFrame, sample_size: Optional[int]) -> pd.DataFrame:
     return df
 
 
+def _drop_constant_columns(
+    reference: pd.DataFrame,
+    current: pd.DataFrame,
+) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
+    constant_cols: List[str] = [
+        col for col in reference.columns if reference[col].nunique(dropna=False) <= 1
+    ]
+    if constant_cols:
+        reference = reference.drop(columns=constant_cols)
+        current = current.drop(columns=constant_cols, errors="ignore")
+    return reference, current, constant_cols
+
+
 def _trim_features(df: pd.DataFrame, max_features: Optional[int]) -> pd.DataFrame:
     if max_features and max_features > 0 and len(df.columns) > max_features:
         selected = list(df.columns)[:max_features]
@@ -166,12 +179,34 @@ def generate_drift_report(
 
     reference = _trim_features(reference, config.monitoring.max_features)
     current = current[reference.columns]
+    reference, current, dropped_constants = _drop_constant_columns(reference, current)
 
     backend = (config.monitoring.backend or "evidently").lower()
     json_path = json_output or config.paths.drift_report
     html_path = html_output or config.paths.drift_dashboard
     json_path.parent.mkdir(parents=True, exist_ok=True)
     html_path.parent.mkdir(parents=True, exist_ok=True)
+    extra_metadata = {"dropped_constant_columns": dropped_constants}
+
+    if reference.shape[1] == 0:
+        LOGGER.warning("All monitored columns were constant; emitting empty drift report.")
+        summary = DriftReportSummary(
+            dataset_drift=False,
+            share_drifted_columns=0.0,
+            drifted_columns=[],
+        )
+        payload = {
+            "backend": backend,
+            "summary": summary.to_dict(),
+            "meta": extra_metadata,
+            "columns": [],
+        }
+        json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        html_path.write_text(
+            "<html><body><p>No non-constant columns available for drift calculation.</p></body></html>",
+            encoding="utf-8",
+        )
+        return summary
 
     if backend != "evidently" or not _EVIDENTLY_AVAILABLE:
         summary, payload, html_content = _generate_fallback_report(
@@ -180,6 +215,7 @@ def generate_drift_report(
             threshold=config.monitoring.stat_test_threshold,
             backend="ks",
             error=None if backend != "evidently" else "evidently backend disabled",
+            extra_metadata=extra_metadata,
         )
         json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         html_path.write_text(html_content, encoding="utf-8")
@@ -192,6 +228,7 @@ def generate_drift_report(
             stat_test=config.monitoring.stat_test,
             stat_threshold=config.monitoring.stat_test_threshold,
             html_path=html_path,
+            extra_metadata=extra_metadata,
         )
         json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return summary
@@ -203,6 +240,7 @@ def generate_drift_report(
             threshold=config.monitoring.stat_test_threshold,
             backend="ks_fallback",
             error=str(exc),
+            extra_metadata=extra_metadata,
         )
         json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         html_path.write_text(html_content, encoding="utf-8")
@@ -216,6 +254,7 @@ def _generate_evidently_report(
     stat_test: str,
     stat_threshold: float,
     html_path: Path,
+    extra_metadata: Optional[dict],
 ) -> Tuple[DriftReportSummary, dict]:
     if not (_EVIDENTLY_AVAILABLE and Report and ColumnMapping and DataDriftPreset):
         raise RuntimeError("Evidently is not available.")
@@ -247,6 +286,7 @@ def _generate_evidently_report(
         {
             "backend": "evidently",
             "summary": summary.to_dict(),
+            "meta": extra_metadata or {},
         }
     )
     return summary, json_payload
@@ -259,6 +299,7 @@ def _generate_fallback_report(
     threshold: float,
     backend: str,
     error: Optional[str],
+    extra_metadata: Optional[dict],
 ) -> Tuple[DriftReportSummary, dict, str]:
     per_column = []
     drifted_columns: List[str] = []
@@ -290,6 +331,7 @@ def _generate_fallback_report(
         "backend": backend,
         "error": error,
         "summary": summary.to_dict(),
+        "meta": extra_metadata or {},
         "columns": per_column,
     }
     html_rows = "\n".join(

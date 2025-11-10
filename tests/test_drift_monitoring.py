@@ -123,3 +123,52 @@ def test_generate_drift_report_uses_fallback_backend(tmp_path):
     assert summary.share_drifted_columns > 0
     payload = json.loads(config.paths.drift_report.read_text(encoding="utf-8"))
     assert payload["backend"] == "ks"
+
+
+def test_constant_columns_are_dropped(tmp_path):
+    monitoring_cfg = MonitoringConfig(
+        enabled=True,
+        drift_enabled=True,
+        backend="ks",
+    )
+    config = build_test_config(
+        tmp_path,
+        selected_columns=["TARGET", "SK_ID_CURR", "CONST", "FEATURE_X"],
+        monitoring_config=monitoring_cfg,
+    )
+    train_path = tmp_path / "train.parquet"
+    test_path = tmp_path / "test.parquet"
+    config.paths.train_set_path = train_path
+    config.paths.test_set_path = test_path
+
+    _write_parquet(
+        train_path,
+        pd.DataFrame(
+            {
+                "SK_ID_CURR": range(20),
+                "TARGET": [0] * 20,
+                "CONST": [1] * 20,
+                "FEATURE_X": list(range(20)),
+            }
+        ),
+    )
+    _write_parquet(
+        test_path,
+        pd.DataFrame(
+            {
+                "SK_ID_CURR": range(100, 120),
+                "TARGET": [0] * 20,
+                "CONST": [1] * 20,
+                "FEATURE_X": [10 + i for i in range(20)],
+            }
+        ),
+    )
+
+    summary = generate_drift_report(config)
+
+    payload = json.loads(config.paths.drift_report.read_text(encoding="utf-8"))
+    columns = [row["column"] for row in payload["columns"]]
+    assert "CONST" not in columns
+    meta = payload.get("meta", {})
+    assert "CONST" in meta.get("dropped_constant_columns", [])
+    assert summary.share_drifted_columns > 0
