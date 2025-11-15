@@ -15,6 +15,11 @@ jobs:
     env:
       MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
       MLFLOW_TRACKING_TOKEN: ${{ secrets.MLFLOW_TRACKING_TOKEN }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECS_CLUSTER_NAME: ${{ secrets.ECS_CLUSTER_NAME }}
+      ECS_SERVICE_NAME: ${{ secrets.ECS_SERVICE_NAME }}
+      ECS_CONTAINER_NAME: creditrisk-api
+      PREDICT_ENDPOINT_URL: ${{ secrets.PREDICT_ENDPOINT_URL }}
 
     steps:
       - name: Checkout
@@ -93,6 +98,66 @@ jobs:
             ghcr.io/${{ github.repository }}/creditrisk-batch:latest
             ghcr.io/${{ github.repository }}/creditrisk-batch:${{ github.sha }}
 
+      - name: Configure AWS credentials
+        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Capture current ECS task definition
+        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+        id: ecs-current
+        run: |
+          CURRENT=$(aws ecs describe-services --cluster "$ECS_CLUSTER_NAME" --services "$ECS_SERVICE_NAME" --query 'services[0].taskDefinition' --output text)
+          if [ -z "$CURRENT" ] || [ "$CURRENT" = "None" ]; then
+            echo "Unable to determine current task definition for $ECS_SERVICE_NAME" >&2
+            exit 1
+          fi
+          echo "current_task=$CURRENT" >> "$GITHUB_OUTPUT"
+          aws ecs describe-task-definition --task-definition "$CURRENT" --query 'taskDefinition' > ecs-task-def.json
+
+      - name: Render ECS task definition
+        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+        id: render-ecs
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ecs-task-def.json
+          container-name: ${{ env.ECS_CONTAINER_NAME }}
+          image: ghcr.io/${{ github.repository }}/creditrisk-api:${{ github.sha }}
+
+      - name: Deploy ECS service
+        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+        id: deploy-ecs
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.render-ecs.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_NAME }}
+          cluster: ${{ env.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true
+
+      - name: Smoke test deployed API
+        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+        id: smoke-test
+        run: |
+          if [ -z "$PREDICT_ENDPOINT_URL" ]; then
+            echo "PREDICT_ENDPOINT_URL secret is required for smoke tests." >&2
+            exit 1
+          fi
+          curl -fsS -m 15 "${PREDICT_ENDPOINT_URL}/health"
+          curl -fsS -m 30 -H "Content-Type: application/json" -d '{"records": []}' "${PREDICT_ENDPOINT_URL}/predict"
+
+      - name: Produce freshness report
+        run: python -m creditrisk.utils.data_freshness --config configs/baseline.yaml --max-age-hours 48 --fail-on-stale
+
+      - name: Roll back ECS service on failure
+        if: ${{ failure() && steps.ecs-current.outcome == 'success' }}
+        run: |
+          echo "Rolling back ECS service to ${{ steps.ecs-current.outputs.current_task }}"
+          aws ecs update-service --cluster "$ECS_CLUSTER_NAME" --service "$ECS_SERVICE_NAME" --task-definition "${{ steps.ecs-current.outputs.current_task }}"
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER_NAME" --services "$ECS_SERVICE_NAME"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -107,3 +172,4 @@ jobs:
             reports/registry_promotion.json
             reports/drift_report.json
             reports/drift_report.html
+            reports/data_freshness.json

@@ -10,6 +10,7 @@
 1. **Data Layer & Ingestion (`ingest_data`)**
    - `python -m creditrisk.pipelines.ingest_data --config configs/baseline.yaml` now speaks directly to Kaggle, S3, Azure Blob, or DVC remotes (based on each `ingestion.sources` entry), downloads/decompresses the raw tables, enforces MD5 checksums, and writes a bronze snapshot summary to `reports/ingestion_summary.json`.
    - All raw CSVs live in `data/raw/` and are tracked through DVC so downstream stages always have deterministic inputs.
+   - `creditrisk.utils.data_freshness` summarizes `reports/ingestion_summary.json` into `reports/data_freshness.json`, flagging stale/missing feeds for automation hooks.
    - `src/creditrisk/features/feature_store.py` runs the original DuckDB SQL notebook to enrich the application table with every aggregate. Additional feature utilities live under `src/creditrisk/features`.
 2. **Feature Engineering (`build_feature_store`)**
    - CLI: `python -m creditrisk.pipelines.build_feature_store --config configs/baseline.yaml`.
@@ -27,6 +28,7 @@
    - Batch scoring uses `creditrisk.pipelines.batch_predict`; online scoring uses the FastAPI app in `creditrisk.serve.api`.
    - Both paths now emit structured JSON logs with correlation IDs, entity counts, and latency, giving observability hooks for Splunk/CloudWatch/etc.
    - Promotion flow: the training stage emits `reports/registry_promotion.json`, and CD invokes `python -m creditrisk.pipelines.auto_promote` to advance registered versions automatically when validations pass.
+   - ECS deployment: once the GitHub Actions CD job publishes images to GHCR, it fetches the live ECS task definition, swaps in the new image tag, forces a deployment, and smoke-tests `/health` + `/predict` via the load balancer. If the smoke test fails, the workflow reverts to the previously running task definition automatically.
 
 ```
 raw Kaggle CSVs
@@ -63,14 +65,15 @@ train_baseline -> test_model -> validate_model -> post-training reports + MLflow
 ## Environments & Automation
 
 - **Local dev**: run the modular CLIs (`ingest_data`, `build_feature_store`, `split_data`, `train_baseline`) directly or via `dvc repro`. Artifacts are tracked in DVC and MLflow, so you can iterate safely.
-- **CI**: install dependencies, run `pytest`, and execute `dvc repro --run-all` (or at least `dvc repro train_baseline`) to catch contract or schema violations early. Failing validation aborts the build with actionable logs.
-- **CD**: containerize the batch CLI and FastAPI app, promote MLflow versions via the provided CLI/helper, and deploy to your platform of choice (SageMaker, Vertex, AKS). Promotions should be tied to automated tests + approval workflows.
+- **CI (`.github/workflows/ci.yaml`)**: installs dependencies, runs linters/tests, and executes a `dvc repro --dry-run validate_model` so schema/contract drift is caught before merge.
+- **CD (`.github/workflows/cd.yaml`)**: pulls data via DVC, runs the full DAG, generates drift + freshness reports, auto-promotes MLflow versions, builds/pushes the API + batch Docker images, and drives the ECS deployment/rollback flow so the FastAPI endpoint is always in lockstep with the latest validated model.
+- **Nightly schedulers (`.github/workflows/nightly.yaml`)**: cron + manual dispatch job that forces `dvc repro --force validate_model` + `monitor_drift`, runs `python -m creditrisk.utils.data_freshness --fail-on-stale`, and uploads the lightweight artifact bundle so on-call engineers can review results without re-running the pipeline.
 
 ## Observability & Telemetry
 
 - **Structured logging**: `creditrisk.observability.logging` enforces JSON-formatted logs with request IDs, entity counts, durations, and status codes across both batch and API inference. Evidently drift reports (`reports/drift_report.json` + `.html`) now ride alongside lineage/ingestion artifacts for nightly health checks.
 - **Correlation IDs**: the FastAPI middleware issues/propagates `X-Request-ID` for every call, enabling log aggregation and alerting around latency/error spikes.
-- **Artifacts**: ingestion summaries, lineage reports, evaluation bundles, validation outcomes, and registry promotion metadata all land under `reports/` for downstream monitoring and audits.
+- **Artifacts**: ingestion summaries, freshness summaries (`reports/data_freshness.json`), lineage reports, evaluation bundles, validation outcomes, and registry promotion metadata all land under `reports/` for downstream monitoring and audits.
 
 ## Containerization & Deployment Artifacts
 

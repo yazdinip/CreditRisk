@@ -48,6 +48,7 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
    - `models/baseline_model.joblib`
    - `reports/metrics.json`, `reports/test_metrics.json`, and `reports/evaluation/`
    - `reports/drift_report.json` + `reports/drift_report.html`
+   - `reports/data_freshness.json` (generated via `python -m creditrisk.utils.data_freshness`)
    - `mlruns/` (MLflow experiment + registry metadata)
 
 4. **Inspect / iterate**
@@ -155,7 +156,10 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 ## CI/CD
 
 - `.github/workflows/ci.yaml` runs on every PR/push. It installs dependencies, runs `ruff` + `bandit`, compiles the code, executes `pytest`, and validates the DVC graph via `dvc repro --dry-run validate_model`.
-- `.github/workflows/cd.yaml` runs on `main`. It pulls datasets via DVC, executes `dvc repro validate_model` followed by `dvc repro monitor_drift`, uploads the expanded observability bundle (metrics, lineage, ingestion, drift), and automatically promotes the latest MLflow version to Production when the validation summary passes. The job also builds and pushes the batch + API Docker images to GHCR for deployment.
+- `.github/workflows/cd.yaml` runs on `main`. It pulls datasets via DVC, executes `dvc repro validate_model` followed by `dvc repro monitor_drift`, uploads the expanded observability bundle (metrics, lineage, ingestion, drift), and automatically promotes the latest MLflow version to Production when the validation summary passes. The job also builds/pushes the batch + API Docker images to GHCR, updates the ECS service (using the task definition already running in your cluster), waits for stability, and smoke-tests `/health` + `/predict`. Failures trigger an automatic rollback to the previous task definition so a bad deploy never lingers.
+
+  Required deployment secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `ECS_CLUSTER_NAME`, `ECS_SERVICE_NAME`, and `PREDICT_ENDPOINT_URL` (the load balancer URL that fronts the service). When these are omitted the workflow skips the ECS steps, so forks can still run the rest of the pipeline without cloud credentials.
+- `.github/workflows/nightly.yaml` is a lightweight scheduler replacement. It runs every morning (UTC) and is manually dispatchable, forces `dvc repro --force validate_model` + `monitor_drift`, and generates `reports/data_freshness.json`. The job fails if the ingestion snapshot is older than the configured SLA (36h by default), which gives you paging-on-failure without a heavy orchestrator.
 - `docs/ci_cd.md` details the automation strategy, required secrets, and future enhancements (e.g., registry promotions).
 
 ## Containers
@@ -164,6 +168,12 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 - `Dockerfile.batch` packages the batch scorer (`creditrisk.pipelines.batch_predict`): `docker build -f Dockerfile.batch -t creditrisk-batch .` and pass CLI args at runtime.
 - `.dockerignore` keeps datasets, reports, and caches out of the image layers for faster reproducible builds.
 
+## Scheduling & Data Freshness
+
+- The nightly GitHub Action covers cron-style orchestration: it forces the full DVC DAG daily, publishes artifacts, and updates `reports/data_freshness.json` so stakeholders know when the last ingestion happened.
+- Need a local check? Run `python -m creditrisk.utils.data_freshness --config configs/baseline.yaml --max-age-hours 24 --fail-on-stale` (after `pip install -e .`). The CLI inspects `reports/ingestion_summary.json`, records the run timestamp, and flips `status` to `stale` when the snapshot is too old or missing.
+- Because the workflow only relies on Actions + the existing DVC graph, you don’t need Airflow/Dagster unless you decide to scale beyond this repo.
+
 ---
 
 ## Next Steps
@@ -171,7 +181,7 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 1. **CI** – wire pre-commit, linting, `pytest`, and `dvc repro --dry` into GitHub Actions (or similar) so every PR validates pipeline + contracts.
 2. **CD** – script container builds (batch + FastAPI) and automate registry promotions into whatever serving platform you use (SageMaker, Vertex, AKS, etc.).
 3. **Monitoring** – extend the validation layer into serving (batch + API) and add drift reports (Evidently/WhyLabs) so production data is continuously checked against training stats.
-4. **Data freshness** – schedule the DVC stages (cron, Airflow, Dagster) and surface metadata like “data currency” to stakeholders.
+4. **Data freshness** – push the nightly Action’s `reports/data_freshness.json` into Slack/email or Opsgenie so stale snapshots alert humans automatically, and consider exposing the same JSON via FastAPI for dashboards.
 5. **Governance** – expand MLflow tags (`tracking.tags`) with risk-specific metadata (PD bands, underwriting notes) to make promotions audit-ready.
 
 ---

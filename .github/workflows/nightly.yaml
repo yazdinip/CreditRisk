@@ -1,0 +1,66 @@
+name: Nightly Pipeline
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  scheduled-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_TOKEN: ${{ secrets.MLFLOW_TRACKING_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Configure DVC remote
+        if: ${{ secrets.DVC_REMOTE_URL != '' }}
+        env:
+          DVC_REMOTE_URL: ${{ secrets.DVC_REMOTE_URL }}
+          DVC_REMOTE_CREDENTIALS: ${{ secrets.DVC_REMOTE_CREDENTIALS }}
+        run: |
+          dvc remote add --default nightly-remote "${DVC_REMOTE_URL}" || dvc remote modify nightly-remote url "${DVC_REMOTE_URL}"
+          if [ -n "${DVC_REMOTE_CREDENTIALS}" ]; then
+            printf "%s" "${DVC_REMOTE_CREDENTIALS}" >> $GITHUB_ENV
+          fi
+
+      - name: Fetch datasets via DVC
+        run: dvc pull
+
+      - name: Run full pipeline (forced)
+        run: dvc repro --force validate_model
+
+      - name: Generate drift monitoring artifacts
+        run: dvc repro --force monitor_drift
+
+      - name: Produce freshness report
+        run: python -m creditrisk.utils.data_freshness --config configs/baseline.yaml --max-age-hours 36 --fail-on-stale
+
+      - name: Upload nightly artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-creditrisk-bundle
+          path: |
+            reports/ingestion_summary.json
+            reports/data_freshness.json
+            reports/post_training_validation.json
+            reports/drift_report.json
+            reports/drift_report.html
