@@ -51,6 +51,13 @@ jobs:
       - name: Generate drift monitoring artifacts
         run: dvc repro --force monitor_drift
 
+      - name: Run production drift monitor
+        env:
+          PROD_CURRENT_PATH: ${{ secrets.PRODUCTION_CURRENT_PATH }}
+        run: |
+          CURRENT_PATH=${PROD_CURRENT_PATH:-data/processed/test.parquet}
+          python -m creditrisk.monitoring.production --config configs/baseline.yaml --current "$CURRENT_PATH" --publish-metrics
+
       - name: Produce freshness report
         run: python -m creditrisk.utils.data_freshness --config configs/baseline.yaml --max-age-hours 36 --fail-on-stale
 

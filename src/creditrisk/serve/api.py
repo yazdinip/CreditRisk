@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 from creditrisk.config import Config
 from creditrisk.observability.logging import generate_request_id, setup_json_logging
 from creditrisk.prediction.helpers import build_output_frame, predict_with_threshold
+from creditrisk.serve.governance import InferenceAuditLogger
+from creditrisk.validation.runner import ValidationRunner
 
 
 setup_json_logging()
@@ -57,6 +59,9 @@ def create_app(
         pipeline = _load_pipeline(cfg, Path(model_path) if model_path else None)
         state["config"] = cfg
         state["pipeline"] = pipeline
+        state["validator"] = ValidationRunner(cfg.validation)
+        state["expected_features"] = list(cfg.features.selected_columns or [])
+        state["audit_logger"] = InferenceAuditLogger(cfg.tracking, cfg.inference)
 
     @app.middleware("http")
     async def _logging_middleware(request: Request, call_next):
@@ -112,6 +117,18 @@ def create_app(
 
         feature_df = payload_df.drop(columns=[cfg.data.target_column], errors="ignore")
 
+        validator: ValidationRunner | None = state.get("validator")
+        expected_features: List[str] = state.get("expected_features", [])
+        if validator and expected_features:
+            try:
+                validator.validate_inference_request(
+                    feature_df,
+                    expected_columns=expected_features,
+                    entity_column=cfg.data.entity_id_column,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         threshold = (
             payload.threshold
             if payload.threshold is not None
@@ -149,6 +166,20 @@ def create_app(
                 "path": "/predict",
             },
         )
+        audit_logger: InferenceAuditLogger | None = state.get("audit_logger")
+        if audit_logger:
+            try:
+                audit_logger.log_request(
+                    request_id=request_id,
+                    threshold=threshold,
+                    payload_df=payload_df,
+                    result_df=result_df,
+                    probabilities=probabilities,
+                    entity_column=cfg.data.entity_id_column,
+                    extra_tags={"model_path": str(cfg.paths.model_path)},
+                )
+            except Exception:  # pragma: no cover
+                LOGGER.exception("Failed to log inference metadata")
         return PredictResponse(predictions=records)
 
     return app

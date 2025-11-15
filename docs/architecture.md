@@ -29,6 +29,7 @@
    - Both paths now emit structured JSON logs with correlation IDs, entity counts, and latency, giving observability hooks for Splunk/CloudWatch/etc.
    - Promotion flow: the training stage emits `reports/registry_promotion.json`, and CD invokes `python -m creditrisk.pipelines.auto_promote` to advance registered versions automatically when validations pass.
    - ECS deployment: once the GitHub Actions CD job publishes images to GHCR, it fetches the live ECS task definition, swaps in the new image tag, forces a deployment, and smoke-tests `/health` + `/predict` via the load balancer. If the smoke test fails, the workflow reverts to the previously running task definition automatically.
+   - Inference governance: the FastAPI app reuses the Pandera/ValidationRunner contracts at request time, rejects malformed payloads before they reach the estimator, and emits MLflow tags/metrics (risk bands, approval rate, request ids) so underwriting teams can trace every decision.
 
 ```
 raw Kaggle CSVs
@@ -67,7 +68,7 @@ train_baseline -> test_model -> validate_model -> post-training reports + MLflow
 - **Local dev**: run the modular CLIs (`ingest_data`, `build_feature_store`, `split_data`, `train_baseline`) directly or via `dvc repro`. Artifacts are tracked in DVC and MLflow, so you can iterate safely.
 - **CI (`.github/workflows/ci.yaml`)**: installs dependencies, runs linters/tests, and executes a `dvc repro --dry-run validate_model` so schema/contract drift is caught before merge.
 - **CD (`.github/workflows/cd.yaml`)**: pulls data via DVC, runs the full DAG, generates drift + freshness reports, auto-promotes MLflow versions, builds/pushes the API + batch Docker images, and drives the ECS deployment/rollback flow so the FastAPI endpoint is always in lockstep with the latest validated model.
-- **Nightly schedulers (`.github/workflows/nightly.yaml`)**: cron + manual dispatch job that forces `dvc repro --force validate_model` + `monitor_drift`, runs `python -m creditrisk.utils.data_freshness --fail-on-stale`, and uploads the lightweight artifact bundle so on-call engineers can review results without re-running the pipeline.
+- **Nightly schedulers (`.github/workflows/nightly.yaml`)**: cron + manual dispatch job that forces `dvc repro --force validate_model` + `monitor_drift`, runs `python -m creditrisk.utils.data_freshness --fail-on-stale`, executes `python -m creditrisk.monitoring.production` against the latest production pull (publishing drift metrics and optionally triggering a retrain), and uploads the lightweight artifact bundle so on-call engineers can review results without re-running the pipeline.
 
 ## Observability & Telemetry
 

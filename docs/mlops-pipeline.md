@@ -11,13 +11,13 @@
 | `batch_infer` | done | Modeling / Ops | `python -m creditrisk.pipelines.batch_predict` | Scores CSVs with configurable thresholds, emitting structured JSON logs (request IDs, entity counts, duration). |
 | `serve_online` | done (Dockerized) / planned (prod) | DevOps | FastAPI + Uvicorn + Dockerfile.api | FastAPI exposes `/predict` + `/health` behind structured logging middleware; container image is ready for AKS/ECS/SageMaker. |
 | `deploy` | planned | DevOps | Docker, MLflow Registry, GitHub Actions | CD runs the full DVC pipeline, uploads artifacts, executes the auto-promotion CLI when validations pass, and builds both containers for downstream rollout. |
-| `monitor` | done (drift) | Monitoring | Evidently, CloudWatch/Grafana | `python -m creditrisk.monitoring.drift` compares persisted train vs. test splits and emits HTML/JSON drift dashboards; production telemetry ingestion hooks are next. |
+| `monitor` | done (train/test & production) | Monitoring | Evidently, CloudWatch, Grafana | `python -m creditrisk.monitoring.drift` compares persisted train vs. test splits while `python -m creditrisk.monitoring.production` ingests fresh production pulls, writes `production_drift_report.{json,html}`, pushes metrics to CloudWatch, and (optionally) triggers a retrain when drift persists. |
 
 ## Orchestration
 
 - **Local**: use DVC (`dvc repro`) to execute DAGs with reproducible params/inputs; stages reuse cached artifacts unless upstream dependencies change.
 - **Remote CI/CD**: GitHub Actions shells out to the same entry points. `ci.yaml` runs lint/tests + `dvc repro --dry-run validate_model`, and `cd.yaml` rebuilds the DAG, generates drift/freshness summaries, auto-promotes MLflow versions, and publishes Docker images.
-- **Lightweight scheduling**: `.github/workflows/nightly.yaml` runs on cron or manual dispatch, forces `dvc repro --force validate_model` + `monitor_drift`, and calls `python -m creditrisk.utils.data_freshness --fail-on-stale` so stale Kaggle/DVC snapshots fail loudly without adding Airflow/Dagster.
+- **Lightweight scheduling**: `.github/workflows/nightly.yaml` runs on cron or manual dispatch, forces `dvc repro --force validate_model` + `monitor_drift`, calls `python -m creditrisk.utils.data_freshness --fail-on-stale`, and executes `python -m creditrisk.monitoring.production` so fresh production pulls feed CloudWatch metrics and retrain triggers without needing Airflow/Dagster.
 
 ## Configuration Strategy
 

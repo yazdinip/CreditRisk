@@ -236,6 +236,11 @@ tracking:
 
 inference:
   decision_threshold: 0.5
+  governance_tags:
+    underwriting_program: baseline_pd
+    portfolio: home_credit
+    channel: api
+  mlflow_inference_experiment: creditrisk_pd_inference
 
 registry:
   enabled: true
@@ -279,6 +284,13 @@ monitoring:
   max_features: 50
   stat_test: ks
   stat_test_threshold: 0.05
+  production_current_path: data/production/current.parquet
+  production_reference_path: data/processed/train.parquet
+  cloudwatch_namespace: CreditRisk/Monitoring
+  cloudwatch_metric_name: CreditRiskPD
+  auto_retrain: false
+  retrain_drift_threshold: 0.3
+  retrain_command: dvc repro validate_model
 
 ingestion:
   enabled: true

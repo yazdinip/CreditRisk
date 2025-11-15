@@ -57,3 +57,21 @@ def test_fastapi_predict_endpoint_returns_scores(tmp_path):
             assert "probability" in record
             assert record["prediction"] in (0, 1)
             assert 0 <= record["probability"] <= 1
+
+
+def test_fastapi_predict_rejects_missing_columns(tmp_path):
+    selected_columns = ["feature_1", "feature_2"]
+    config = build_test_config(tmp_path, selected_columns)
+    _train_and_save_pipeline(tmp_path, config)
+
+    app = create_app(config_override=config, model_path=str(config.paths.model_path))
+
+    with TestClient(app) as client:
+        payload = {
+            "records": [
+                {"SK_ID_CURR": 9991, "feature_1": 0.3},
+            ]
+        }
+        response = client.post("/predict", json=payload)
+        assert response.status_code == 400
+        assert "missing columns" in response.json()["detail"].lower()

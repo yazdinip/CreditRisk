@@ -79,6 +79,7 @@ Artifacts are retained for 30 days so reviewers can download the exact model bun
   - Same environment prep + DVC remote configuration as CD.
   - `dvc repro --force validate_model` and `dvc repro --force monitor_drift` to guarantee a fresh DAG run, even if no code changed.
   - `python -m creditrisk.utils.data_freshness --max-age-hours 36 --fail-on-stale` to produce `reports/data_freshness.json` and fail loudly when the ingestion snapshot exceeds the SLA.
+  - `python -m creditrisk.monitoring.production --publish-metrics` to compare the latest production extracts against the training baseline, push the drift share/flag into CloudWatch (when AWS credentials are scoped), and write `reports/retrain_trigger.json`. When the drift share exceeds the configured threshold the workflow automatically runs the retrain command so a fresh model is queued without human intervention.
   - Upload a trimmed artifact set (`ingestion_summary.json`, `data_freshness.json`, drift outputs) so on-call engineers can inspect the results without reproducing them locally.
 
 ## Next Steps

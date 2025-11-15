@@ -131,6 +131,28 @@ class ValidationRunner:
         if np.isinf(view.to_numpy()).any():
             raise ValueError(f"{stage_name} matrix contains +/-inf values.")
 
+    def validate_inference_request(
+        self,
+        payload_df: pd.DataFrame,
+        expected_columns: Sequence[str],
+        entity_column: Optional[str],
+    ) -> None:
+        """Ensure inference requests honor the model IO contract."""
+        if not expected_columns:
+            return
+        self.validate_feature_matrix(payload_df, expected_columns, stage_name="inference")
+        if (
+            entity_column
+            and entity_column in payload_df.columns
+            and self._should_run(self.cfg.enforce_model_io_contracts)
+        ):
+            duplicates = payload_df[entity_column][payload_df[entity_column].duplicated()]
+            if not duplicates.empty:
+                raise ValueError(
+                    f"Duplicate {entity_column} values detected in inference payload: "
+                    f"{duplicates.head().tolist()}"
+                )
+
     # --------------------------------------------------------------------- #
     # Internal helpers
     # --------------------------------------------------------------------- #

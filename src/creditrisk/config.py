@@ -25,6 +25,10 @@ class PathsConfig:
     registry_report: Optional[Path] = None
     drift_report: Optional[Path] = None
     drift_dashboard: Optional[Path] = None
+    production_drift_report: Optional[Path] = None
+    production_drift_dashboard: Optional[Path] = None
+    drift_metrics_file: Optional[Path] = None
+    retrain_report: Optional[Path] = None
 
     def __post_init__(self) -> None:
         self.model_dir = Path(self.model_dir)
@@ -53,6 +57,22 @@ class PathsConfig:
             self.drift_dashboard = self.reports_dir / "drift_report.html"
         else:
             self.drift_dashboard = Path(self.drift_dashboard)
+        if self.production_drift_report is None:
+            self.production_drift_report = self.reports_dir / "production_drift_report.json"
+        else:
+            self.production_drift_report = Path(self.production_drift_report)
+        if self.production_drift_dashboard is None:
+            self.production_drift_dashboard = self.reports_dir / "production_drift_report.html"
+        else:
+            self.production_drift_dashboard = Path(self.production_drift_dashboard)
+        if self.drift_metrics_file is None:
+            self.drift_metrics_file = self.reports_dir / "drift_metrics.json"
+        else:
+            self.drift_metrics_file = Path(self.drift_metrics_file)
+        if self.retrain_report is None:
+            self.retrain_report = self.reports_dir / "retrain_trigger.json"
+        else:
+            self.retrain_report = Path(self.retrain_report)
 
     @property
     def model_path(self) -> Path:
@@ -155,6 +175,8 @@ class InferenceConfig:
     """Inference-time options."""
 
     decision_threshold: float = 0.5
+    governance_tags: Dict[str, str] = field(default_factory=dict)
+    mlflow_inference_experiment: Optional[str] = None
 
 
 @dataclass
@@ -218,6 +240,19 @@ class MonitoringConfig:
     max_features: Optional[int] = 50
     stat_test: str = "auto"
     stat_test_threshold: float = 0.05
+    production_current_path: Optional[Path] = None
+    production_reference_path: Optional[Path] = None
+    cloudwatch_namespace: Optional[str] = None
+    cloudwatch_metric_name: str = "CreditRiskDrift"
+    auto_retrain: bool = False
+    retrain_drift_threshold: float = 0.2
+    retrain_command: str = "dvc repro validate_model"
+
+    def __post_init__(self) -> None:
+        if self.production_current_path:
+            self.production_current_path = Path(self.production_current_path)
+        if self.production_reference_path:
+            self.production_reference_path = Path(self.production_reference_path)
 
 
 @dataclass
@@ -317,6 +352,10 @@ class Config:
                 "registry_report": str(self.paths.registry_report),
                 "drift_report": str(self.paths.drift_report),
                 "drift_dashboard": str(self.paths.drift_dashboard),
+                "production_drift_report": str(self.paths.production_drift_report),
+                "production_drift_dashboard": str(self.paths.production_drift_dashboard),
+                "drift_metrics_file": str(self.paths.drift_metrics_file),
+                "retrain_report": str(self.paths.retrain_report),
             },
             "data": {
                 "raw_path": str(self.data.raw_path),
@@ -381,6 +420,8 @@ class Config:
             },
             "inference": {
                 "decision_threshold": self.inference.decision_threshold,
+                "governance_tags": self.inference.governance_tags,
+                "mlflow_inference_experiment": self.inference.mlflow_inference_experiment,
             },
             "registry": {
                 "enabled": self.registry.enabled,
@@ -415,6 +456,17 @@ class Config:
                 "max_features": self.monitoring.max_features,
                 "stat_test": self.monitoring.stat_test,
                 "stat_test_threshold": self.monitoring.stat_test_threshold,
+                "production_current_path": str(self.monitoring.production_current_path)
+                if self.monitoring.production_current_path
+                else None,
+                "production_reference_path": str(self.monitoring.production_reference_path)
+                if self.monitoring.production_reference_path
+                else None,
+                "cloudwatch_namespace": self.monitoring.cloudwatch_namespace,
+                "cloudwatch_metric_name": self.monitoring.cloudwatch_metric_name,
+                "auto_retrain": self.monitoring.auto_retrain,
+                "retrain_drift_threshold": self.monitoring.retrain_drift_threshold,
+                "retrain_command": self.monitoring.retrain_command,
             },
             "ingestion": {
                 "enabled": self.ingestion.enabled,

@@ -151,6 +151,7 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 - **MLflow**: experiment tracking, artifact logging, and registry-backed promotion; optionally point `tracking_uri` to a managed server.
 - **Evaluation bundle**: `creditrisk.utils.evaluation` writes ROC, PR, calibration, and confusion-matrix artifacts under `reports/evaluation/` for downstream QA or reporting.
 - **Deployment hooks**: batch CLI + FastAPI (`creditrisk.serve.api`) reuse the saved sklearn pipeline and decision threshold; a promotion CLI bridges registry stages into deployment workflows.
+- **Serving governance**: the FastAPI service runs the same Pandera/ValidationRunner contracts at inference time, rejects malformed payloads, and logs underwriting metadata + request-level metrics (risk bands, approval rate, entity counts) to MLflow for auditability.
 - **Tests**: run `pytest tests` before merge to ensure helper modules and APIs stay healthy.
 
 ## CI/CD
@@ -159,6 +160,23 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 - `.github/workflows/cd.yaml` runs on `main`. It pulls datasets via DVC, executes `dvc repro validate_model` followed by `dvc repro monitor_drift`, uploads the expanded observability bundle (metrics, lineage, ingestion, drift), and automatically promotes the latest MLflow version to Production when the validation summary passes. The job also builds/pushes the batch + API Docker images to GHCR, updates the ECS service (using the task definition already running in your cluster), waits for stability, and smoke-tests `/health` + `/predict`. Failures trigger an automatic rollback to the previous task definition so a bad deploy never lingers.
 
   Required deployment secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `ECS_CLUSTER_NAME`, `ECS_SERVICE_NAME`, and `PREDICT_ENDPOINT_URL` (the load balancer URL that fronts the service). When these are omitted the workflow skips the ECS steps, so forks can still run the rest of the pipeline without cloud credentials.
+- `.github/workflows/nightly.yaml` is a lightweight scheduler replacement. It runs every morning (UTC) and is manually dispatchable, forces `dvc repro --force validate_model` + `monitor_drift`, runs the production-focused monitor (`python -m creditrisk.monitoring.production`) against the latest scoring extracts, pushes drift metrics into CloudWatch (when AWS creds exist), and writes `reports/retrain_trigger.json`. If the drift share crosses the configured threshold the job invokes the configured retrain command so the DAG restarts automatically.
+
+### Production Data Monitoring & Retrain Automation
+
+Use the new CLI to evaluate fresh production pulls (e.g., daily scored applications), publish metrics for dashboards, and trigger retraining when drift persists:
+
+```bash
+python -m creditrisk.monitoring.production \
+  --config configs/baseline.yaml \
+  --current data/production/<yyyy-mm-dd>.parquet \
+  --publish-metrics \
+  --auto-retrain
+```
+
+- Outputs land in `reports/production_drift_report.{json,html}` plus `reports/drift_metrics.json` for Grafana.
+- CloudWatch metrics (`CreditRisk/Monitoring`) receive the drift share + binary drift flag so alarms can page when SLAs are missed.
+- `reports/retrain_trigger.json` records whether a retrain was launched (and why); when the flag is set, the configured command (default `dvc repro validate_model`) runs automatically.
 - `.github/workflows/nightly.yaml` is a lightweight scheduler replacement. It runs every morning (UTC) and is manually dispatchable, forces `dvc repro --force validate_model` + `monitor_drift`, and generates `reports/data_freshness.json`. The job fails if the ingestion snapshot is older than the configured SLA (36h by default), which gives you paging-on-failure without a heavy orchestrator.
 - `docs/ci_cd.md` details the automation strategy, required secrets, and future enhancements (e.g., registry promotions).
 
