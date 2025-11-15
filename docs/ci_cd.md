@@ -30,6 +30,7 @@ The workflows expect these GitHub secrets:
 | `AWS_REGION` | Region hosting the ECS cluster + load balancer. |
 | `ECS_CLUSTER_NAME` / `ECS_SERVICE_NAME` | Target ECS service that should run the FastAPI container. |
 | `PREDICT_ENDPOINT_URL` | HTTPS endpoint (ALB / API Gateway) for smoke tests hitting `/health` + `/predict`. |
+| `PRODUCTION_CURRENT_PATH` | (Nightly only) Optional path/URL to the freshest scored dataset for production drift analysis. |
 
 Secrets are injected only in the CD job.
 
@@ -54,11 +55,12 @@ Secrets are injected only in the CD job.
   - Checkout with fetch.
   - Configure Python/DVC.
   - Authenticate DVC remote using `DVC_REMOTE_*`.
-  - `dvc pull` to get raw datasets.
-  - `dvc repro validate_model`.
-  - `dvc repro monitor_drift`.
-  - `python -m creditrisk.utils.data_freshness --max-age-hours 48 --fail-on-stale` (captures `reports/data_freshness.json` and prevents stale merges).
-  - Build/push containers: leverage `docker/build-push-action` to publish `Dockerfile.api` and `Dockerfile.batch` images to GHCR (`ghcr.io/<org>/creditrisk-{api|batch}`) tagged with both `latest` and the Git SHA so environments downstream can pull immutable artifacts.
+- `dvc pull` to get raw datasets.
+- `dvc repro validate_model`.
+- `dvc repro monitor_drift`.
+- `python -m creditrisk.utils.data_freshness --max-age-hours 48 --fail-on-stale` (captures `reports/data_freshness.json` and prevents stale merges).
+- Optional canary gate: `python -m creditrisk.pipelines.canary_validation --config configs/baseline.yaml --baseline-model <prod-model.joblib> --candidate-model models/baseline_model.joblib --dataset data/processed/test.parquet --max-metric-delta 0.02`. Failures block the deploy, giving you an approval step even in CI.
+- Build/push containers: leverage `docker/build-push-action` to publish `Dockerfile.api` and `Dockerfile.batch` images to GHCR (`ghcr.io/<org>/creditrisk-{api|batch}`) tagged with both `latest` and the Git SHA so environments downstream can pull immutable artifacts.
   - Configure AWS credentials, download the currently active ECS task definition, render it with the freshly pushed image tag, deploy to the configured cluster/service, and wait for stability. `/health` and `/predict` are smoke-tested via the load balancer; failures trigger an automatic rollback to the previously running task definition so production traffic never sees a broken build.
   - Upload artifacts:
     - `reports/metrics.json`
@@ -68,6 +70,11 @@ Secrets are injected only in the CD job.
     - `models/baseline_model.joblib`
     - `reports/evaluation/**`
     - `reports/post_training_validation.json`
+    - `reports/registry_promotion.json`
+    - `reports/drift_report.{json,html}`
+    - `reports/production_drift_report.{json,html}`
+    - `reports/drift_metrics.json`
+    - `reports/retrain_trigger.json`
   - Auto-promote: run `python -m creditrisk.pipelines.auto_promote --stage Production` when `reports/registry_promotion.json` exists and the validation summary reports `status: passed`.
 
 Artifacts are retained for 30 days so reviewers can download the exact model bundle.
@@ -79,11 +86,17 @@ Artifacts are retained for 30 days so reviewers can download the exact model bun
   - Same environment prep + DVC remote configuration as CD.
   - `dvc repro --force validate_model` and `dvc repro --force monitor_drift` to guarantee a fresh DAG run, even if no code changed.
   - `python -m creditrisk.utils.data_freshness --max-age-hours 36 --fail-on-stale` to produce `reports/data_freshness.json` and fail loudly when the ingestion snapshot exceeds the SLA.
-  - `python -m creditrisk.monitoring.production --publish-metrics` to compare the latest production extracts against the training baseline, push the drift share/flag into CloudWatch (when AWS credentials are scoped), and write `reports/retrain_trigger.json`. When the drift share exceeds the configured threshold the workflow automatically runs the retrain command so a fresh model is queued without human intervention.
+  - `python -m creditrisk.monitoring.production --publish-metrics` to compare the latest production extracts against the training baseline, push the drift share/flag into CloudWatch (when AWS credentials are scoped), and write `reports/retrain_trigger.json`. Set `monitoring.auto_retrain: true` (or pass `--auto-retrain`) if you want the nightly job to execute the configured retrain command automatically whenever the drift threshold is breached.
   - Upload a trimmed artifact set (`ingestion_summary.json`, `data_freshness.json`, drift outputs) so on-call engineers can inspect the results without reproducing them locally.
+
+### 4. Airflow DAG (`orchestration/airflow_creditrisk_dag.py`)
+
+- Use this when you need stateful orchestration, retries, SLA monitoring, or manual approvals. Each stage shells out to the same CLIs used locally (`dvc repro ...`, `python -m creditrisk.monitoring.production`, `python -m creditrisk.pipelines.canary_validation`), so the DAG stays in sync with the repo.
+- Airflow Variables provide the repo path, production dataset location, production model path, and allowed canary deltas, making it easy to promote the same DAG across dev/staging/prod.
+- Pair with Airflow’s notification + approval features to recreate the “approval-gated CI/CD” requirement from the proposal.
 
 ## Next Steps
 
 1. Link GH Actions status to PR requirements.
-2. Add slack/webhook notifications for CD success/failure.
+2. Pipe key workflow outcomes (freshness, drift, deploy success) into Slack/webhooks for easier paging.
 3. Add manual approval gates or change-management hooks before Production promotion if required by governance.

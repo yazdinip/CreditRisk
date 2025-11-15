@@ -75,3 +75,35 @@ def test_fastapi_predict_rejects_missing_columns(tmp_path):
         response = client.post("/predict", json=payload)
         assert response.status_code == 400
         assert "missing columns" in response.json()["detail"].lower()
+
+
+def test_metadata_schema_and_metrics(tmp_path):
+    selected_columns = ["feature_1", "feature_2"]
+    config = build_test_config(tmp_path, selected_columns)
+    _train_and_save_pipeline(tmp_path, config)
+
+    app = create_app(config_override=config, model_path=str(config.paths.model_path))
+    payload = {
+        "records": [
+            {"SK_ID_CURR": 9993, "feature_1": 0.5, "feature_2": 0.5},
+        ]
+    }
+
+    with TestClient(app) as client:
+        meta = client.get("/metadata")
+        assert meta.status_code == 200
+        assert meta.json()["decision_threshold"] == config.inference.decision_threshold
+
+        schema = client.get("/schema")
+        assert schema.status_code == 200
+        schema_body = schema.json()
+        assert schema_body["feature_columns"] == selected_columns
+
+        validate = client.post("/validate", json=payload)
+        assert validate.status_code == 200
+        assert validate.json()["valid"] is True
+
+        client.post("/predict", json=payload)
+        metrics = client.get("/metrics")
+        assert metrics.status_code == 200
+        assert metrics.json()["predictions_total"] >= 1

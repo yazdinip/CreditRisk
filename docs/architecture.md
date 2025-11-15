@@ -27,9 +27,10 @@
 6. **Serving / Deployment**
    - Batch scoring uses `creditrisk.pipelines.batch_predict`; online scoring uses the FastAPI app in `creditrisk.serve.api`.
    - Both paths now emit structured JSON logs with correlation IDs, entity counts, and latency, giving observability hooks for Splunk/CloudWatch/etc.
-   - Promotion flow: the training stage emits `reports/registry_promotion.json`, and CD invokes `python -m creditrisk.pipelines.auto_promote` to advance registered versions automatically when validations pass.
+   - Promotion flow: the training stage emits `reports/registry_promotion.json`, CD invokes `python -m creditrisk.pipelines.auto_promote`, and now `python -m creditrisk.pipelines.canary_validation` compares the candidate model against the current Production artifact before ECS is touched.
    - ECS deployment: once the GitHub Actions CD job publishes images to GHCR, it fetches the live ECS task definition, swaps in the new image tag, forces a deployment, and smoke-tests `/health` + `/predict` via the load balancer. If the smoke test fails, the workflow reverts to the previously running task definition automatically.
    - Inference governance: the FastAPI app reuses the Pandera/ValidationRunner contracts at request time, rejects malformed payloads before they reach the estimator, and emits MLflow tags/metrics (risk bands, approval rate, request ids) so underwriting teams can trace every decision.
+   - Orchestration: in addition to GitHub Actions, `orchestration/airflow_creditrisk_dag.py` mirrors the same DAG in Apache Airflow so you can move the stateful orchestration (retries, approvals, backfills) to a managed control plane without rewriting any stage logic.
 
 ```
 raw Kaggle CSVs
@@ -67,8 +68,9 @@ train_baseline -> test_model -> validate_model -> post-training reports + MLflow
 
 - **Local dev**: run the modular CLIs (`ingest_data`, `build_feature_store`, `split_data`, `train_baseline`) directly or via `dvc repro`. Artifacts are tracked in DVC and MLflow, so you can iterate safely.
 - **CI (`.github/workflows/ci.yaml`)**: installs dependencies, runs linters/tests, and executes a `dvc repro --dry-run validate_model` so schema/contract drift is caught before merge.
-- **CD (`.github/workflows/cd.yaml`)**: pulls data via DVC, runs the full DAG, generates drift + freshness reports, auto-promotes MLflow versions, builds/pushes the API + batch Docker images, and drives the ECS deployment/rollback flow so the FastAPI endpoint is always in lockstep with the latest validated model.
+- **CD (`.github/workflows/cd.yaml`)**: pulls data via DVC, runs the full DAG, generates drift + freshness reports, auto-promotes MLflow versions, builds/pushes the API + batch Docker images, runs the canary validation CLI against the Production model, and drives the ECS deployment/rollback flow so the FastAPI endpoint is always in lockstep with the latest validated model.
 - **Nightly schedulers (`.github/workflows/nightly.yaml`)**: cron + manual dispatch job that forces `dvc repro --force validate_model` + `monitor_drift`, runs `python -m creditrisk.utils.data_freshness --fail-on-stale`, executes `python -m creditrisk.monitoring.production` against the latest production pull (publishing drift metrics and optionally triggering a retrain), and uploads the lightweight artifact bundle so on-call engineers can review results without re-running the pipeline.
+- **Airflow DAG**: `orchestration/airflow_creditrisk_dag.py` mirrors the same flow inside Apache Airflow for teams that want stateful orchestration, manual approval tasks, or on-cluster retries/backfills.
 
 ## Observability & Telemetry
 

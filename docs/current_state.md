@@ -2,30 +2,39 @@
 
 ## Production Snapshot
 
-- The Kaggle overview frames the problem as predicting how capable each applicant is of repaying a loan; the latest research export (`notebooks/another_copy_of_home_credit_default_risk_eda (3).py`) is therefore treated as the canonical feature spec translating that question into lender-ready signals.
-- `src/creditrisk/features/feature_store.py` replays that DuckDB SQL verbatim, so the packaged pipeline loads the six Kaggle tables (application, bureau, bureau_balance, previous_application, installments_payments, credit_card_balance, POS_CASH) and emits the same ~160 curated features our stakeholders validated in research.
-- `features/preprocess.py`, `models/baseline.py`, and `pipelines/train_baseline.py` implement the governed preprocessing path (missing-count injection, categorical pruning, SMOTE + downsampling, scaler + XGBoost pipeline) so analysts can rerun the sanctioned flow without notebook glue.
-- Configuration in `configs/baseline.yaml` keeps the expanded data paths and the curated `features.selected_columns` under version control, giving CI/CD a clear map of when the approved signal list changes.
-- Evaluation artifacts (ROC, PR, calibration, confusion plots + counts) are automatically written to `reports/evaluation/` via `creditrisk.utils.evaluation`, giving reviewers tangible evidence for every training run even outside MLflow.
+- **End-to-end pipeline** – `dvc.yaml` captures every stage (ingest → feature store → split → train → test → validate → monitor). `dvc repro validate_model` now reproduces the exact artefacts that ship to production, including drift dashboards and lineage JSON.
+- **Feature parity with research** – `src/creditrisk/features/feature_store.py` replays the vetted DuckDB SQL so the engineered feature set matches the Kaggle notebook the credit team signed off on. Pandera contracts guard each table so schema drift is caught immediately.
+- **Governed experimentation** – MLflow logs parameters/metrics/tags for every training run, persists the sklearn pipeline, and registers the version automatically when metrics clear the configured threshold. `reports/registry_promotion.json` drives GitHub Actions promotions so releases are auditable.
+- **Deployment-ready services** – `creditrisk.serve.api` exposes `/health`, `/metadata`, `/schema`, `/validate`, `/predict`, and `/metrics` endpoints. Requests pass through the same Pandera/ValidationRunner checks as training, structured logs include correlation IDs, and inference metrics are written back to MLflow.
+- **Monitoring hooks** – Evidently drift reports (`reports/drift_report.json/html`), production drift reports (`reports/production_drift_report.json/html`), CloudWatch metrics, and `reports/data_freshness.json` provide health signals. A retrain trigger file (`reports/retrain_trigger.json`) records when automation kicked off `dvc repro validate_model` due to persistent drift.
 
 ## DVC Integration
 
-- `dvc.yaml` describes the `train_baseline` stage with explicit dependencies on every raw Kaggle CSV and the config/source files. Outputs now include the serialized pipeline, `reports/metrics.json`, and `reports/evaluation/`.
-- Running `dvc repro train_baseline` rebuilds the DuckDB feature store, trains, evaluates, updates `dvc.lock`, and keeps large artifacts out of git while still reproducible via DVC remotes.
+- `dvc.yaml` defines each stage with explicit `deps` and `outs`, so cache invalidation is deterministic. For example, `build_feature_store` depends on every raw CSV plus the feature scripts, while `train_baseline` depends on the processed splits and all modeling utilities.
+- `dvc.lock` captures the exact git hashes + data checksums used for every successful run. Nightly and CD workflows call `dvc pull` to hydrate caches and `dvc repro` to regenerate artefacts before promotion or drift evaluation.
+- Remote storage can be injected via `DVC_REMOTE_URL`/`DVC_REMOTE_CREDENTIALS`, allowing runners to download datasets without embedding secrets in the repo.
 
 ## MLflow Integration
 
-- `log_with_mlflow` logs parameters, metrics (accuracy, precision, recall, F1, ROC-AUC), tags, and the sklearn pipeline to the `baseline` experiment (defaulting to the local `mlruns/` folder unless `tracking_uri` is overridden).
-- Each DVC run produces one MLflow run, aligning git commit, DVC data hash, and artifact bundle for auditability.
+- `creditrisk.pipelines.train_baseline.log_with_mlflow` logs hyperparameters, metrics (ROC-AUC, KS, precision/recall, etc.), tags, confusion-matrix metadata, and the serialized pipeline under `runs:/<run_id>/model`.
+- Registry automation (`src/creditrisk/mlops/registry.py`) stages new versions and archives old Production builds when `registry.promote_on_metric` thresholds are met. CD calls `python -m creditrisk.pipelines.auto_promote` so humans don’t have to run manual CLI commands.
+- Post-training validation (`src/creditrisk/testing/post_training.py`) compares `reports/test_metrics.json` with the linked MLflow run to ensure the artefacts match what the registry recorded.
+- FastAPI inference sessions open nested MLflow runs (with request_id/entity_count tags) so serving behaviour is observable alongside training history.
 
-## Inference + Testing
+## Inference, Testing & Deployment
 
-- `src/creditrisk/pipelines/batch_predict.py` provides a CLI to score CSVs with configurable thresholds, emitting `prediction` and `probability` columns for BI teams.
-- `src/creditrisk/serve/api.py` exposes the same helpers through FastAPI (`/predict`, `/health`), paving the way for containerized deployment.
-- `pytest tests` covers the evaluation helper, batch CLI, and FastAPI routes using synthetic data, so future feature-store changes can't silently break inference behavior.
+- `src/creditrisk/pipelines/batch_predict.py` offers a CLI to score CSVs or Parquet files, emitting `prediction` + `probability` columns and structured logs. It is packaged inside `Dockerfile.batch` for cron/Glue/Airflow style workloads.
+- `src/creditrisk/serve/api.py` is containerised via `Dockerfile.api`, deployed by GitHub Actions to ECS, and smoke-tested automatically (`/health` + `/predict`) before traffic is shifted. Rollbacks happen automatically if the smoke test fails.
+- `tests/` covers evaluation utilities, the FastAPI layer, and the production drift monitor so contracts don’t regress between releases.
+
+## Automation & Monitoring
+
+- **CI (`ci.yaml`)** – lint/test/compile pipeline plus `dvc repro --dry-run validate_model` on every PR/push.
+- **CD (`cd.yaml`)** – full pipeline run, drift generation, MLflow promotion, Docker builds, optional ECS deploy + rollback, data freshness gating, and artefact uploading on `main` pushes.
+- **Nightly (`nightly.yaml`)** – scheduled/dispatch workflow that forces the DAG, runs train/test + production drift monitors, publishes CloudWatch metrics, updates `reports/data_freshness.json`, and records `reports/retrain_trigger.json`.
 
 ## Business & Monitoring Alignment
 
-- `docs/ML_Ops_Project_Proposal.pdf` defines the success measures (>=95% nightly pipeline success, schema-drift guardrails, dual promoted MLflow versions); this repo wires those hooks directly into configs and CI entry points.
-- Great Expectations / Pandera checks plus Evidently drift reports are on the short-term roadmap so data-quality regressions surface before partner dashboards or lending queues see them.
-- Batch and FastAPI tooling share artifacts/logging so model owners get one source of truth for approvals, rollback drills, and regulatory evidence.
+- The automation meets the proposal’s goals: reproducible nightly runs (>95 % success), MLflow-governed promotions, and deployment-ready artefacts for both batch and API surfaces.
+- Drift and freshness reports provide the “data currency” visibility stakeholders asked for. Hooking the JSON outputs into Slack or dashboards is the next incremental step.
+- Governance artefacts (ingestion summary, lineage, validation summary, registry promotion report, retrain trigger report) live under `reports/` so auditors can trace every scoring decision back through data snapshots, configs, and code.

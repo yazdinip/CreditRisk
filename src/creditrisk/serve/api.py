@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -14,7 +15,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from creditrisk.config import Config
-from creditrisk.observability.logging import generate_request_id, setup_json_logging
+from creditrisk.observability.logging import (
+    configure_context,
+    generate_request_id,
+    publish_metric,
+    setup_json_logging,
+)
 from creditrisk.prediction.helpers import build_output_frame, predict_with_threshold
 from creditrisk.serve.governance import InferenceAuditLogger
 from creditrisk.validation.runner import ValidationRunner
@@ -62,16 +68,36 @@ def create_app(
         state["validator"] = ValidationRunner(cfg.validation)
         state["expected_features"] = list(cfg.features.selected_columns or [])
         state["audit_logger"] = InferenceAuditLogger(cfg.tracking, cfg.inference)
+        state["metrics"] = {
+            "requests_total": 0,
+            "predictions_total": 0,
+            "errors_total": 0,
+            "last_request_at": None,
+            "last_predict_at": None,
+        }
+        configure_context(service="creditrisk-api", model_name=cfg.registry.model_name)
 
     @app.middleware("http")
     async def _logging_middleware(request: Request, call_next):
+        cfg: Config | None = state.get("config")
         request_id = request.headers.get("X-Request-ID") or generate_request_id()
         request.state.request_id = request_id
         start = time.perf_counter()
+        metrics: Dict[str, Any] = state.get("metrics", {})
+        metrics["requests_total"] = metrics.get("requests_total", 0) + 1
+        metrics["last_request_at"] = datetime.now(timezone.utc).isoformat()
         try:
             response = await call_next(request)
         except Exception:  # pragma: no cover - middleware guard
             duration_ms = (time.perf_counter() - start) * 1000
+            metrics["errors_total"] = metrics.get("errors_total", 0) + 1
+            if cfg:
+                publish_metric(
+                    namespace=cfg.monitoring.cloudwatch_namespace or "CreditRisk/API",
+                    metric_name="RequestFailures",
+                    value=1,
+                    dimensions={"Path": request.url.path},
+                )
             LOGGER.exception(
                 "API request failed",
                 extra={
@@ -91,18 +117,63 @@ def create_app(
                 "duration_ms": round(duration_ms, 2),
             },
         )
+        if cfg:
+            publish_metric(
+                namespace=cfg.monitoring.cloudwatch_namespace or "CreditRisk/API",
+                metric_name="RequestLatencyMs",
+                value=round(duration_ms, 2),
+                unit="Milliseconds",
+                dimensions={"Path": request.url.path},
+            )
         response.headers["X-Request-ID"] = request_id
         return response
+
+    def _ensure_ready() -> None:
+        if "pipeline" not in state or "config" not in state:
+            raise HTTPException(status_code=503, detail="Model artifacts not ready.")
 
     @app.get("/health")
     async def health() -> JSONResponse:
         return JSONResponse({"status": "ok"})
 
+    @app.get("/metadata")
+    async def metadata() -> JSONResponse:
+        _ensure_ready()
+        cfg: Config = state["config"]
+        model_path = cfg.paths.model_path
+        modified = None
+        size = None
+        if model_path.exists():
+            stat = model_path.stat()
+            size = stat.st_size
+            modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+        payload = {
+            "model_path": str(model_path),
+            "model_last_modified": modified,
+            "model_size_bytes": size,
+            "decision_threshold": cfg.inference.decision_threshold,
+            "tracking_experiment": cfg.tracking.experiment_name,
+            "governance_tags": cfg.inference.governance_tags,
+            "entity_column": cfg.data.entity_id_column,
+        }
+        return JSONResponse(payload)
+
+    @app.get("/schema")
+    async def schema() -> JSONResponse:
+        _ensure_ready()
+        cfg: Config = state["config"]
+        features = state.get("expected_features", [])
+        payload = {
+            "feature_columns": features,
+            "entity_column": cfg.data.entity_id_column,
+            "target_column": cfg.data.target_column,
+            "total_features": len(features),
+        }
+        return JSONResponse(payload)
+
     @app.post("/predict", response_model=PredictResponse)
     async def predict(request: Request, payload: PredictRequest) -> PredictResponse:
-        if "pipeline" not in state or "config" not in state:
-            raise HTTPException(status_code=503, detail="Model artifacts not ready.")
-
+        _ensure_ready()
         cfg: Config = state["config"]
         pipeline = state["pipeline"]
 
@@ -180,7 +251,36 @@ def create_app(
                 )
             except Exception:  # pragma: no cover
                 LOGGER.exception("Failed to log inference metadata")
+        metrics = state.get("metrics")
+        if metrics is not None:
+            metrics["predictions_total"] = metrics.get("predictions_total", 0) + len(records)
+            metrics["last_predict_at"] = datetime.now(timezone.utc).isoformat()
         return PredictResponse(predictions=records)
+
+    @app.post("/validate")
+    async def validate(payload: PredictRequest) -> JSONResponse:
+        _ensure_ready()
+        cfg: Config = state["config"]
+        validator: ValidationRunner | None = state.get("validator")
+        expected_features: List[str] = state.get("expected_features", [])
+        payload_df = pd.DataFrame(payload.records)
+        response: Dict[str, Any] = {"records": len(payload.records), "valid": True, "missing_columns": []}
+        if validator and expected_features:
+            try:
+                validator.validate_inference_request(
+                    payload_df.drop(columns=[cfg.data.target_column], errors="ignore"),
+                    expected_columns=expected_features,
+                    entity_column=cfg.data.entity_id_column,
+                )
+            except ValueError as exc:
+                response["valid"] = False
+                response["error"] = str(exc)
+        return JSONResponse(response)
+
+    @app.get("/metrics")
+    async def metrics() -> JSONResponse:
+        metrics_snapshot = dict(state.get("metrics", {}))
+        return JSONResponse(metrics_snapshot)
 
     return app
 

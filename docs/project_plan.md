@@ -11,24 +11,24 @@
 ## Goals & Success Criteria
 
 1. Ship a reliable, monitored credit-risk pipeline with reproducible end-to-end runs.
-2. Deploy a SageMaker endpoint with approval-gated CI/CD.
+2. Deploy a containerised FastAPI endpoint (ECS/GHCR) with approval-gated CI/CD and automatic rollbacks.
 3. Enforce data contracts (blocking >5% schema drift) and maintain ≥95% nightly pipeline success.
-4. Maintain an MLflow-style registry with at least two promoted versions plus rollback drills.
-5. Provide observability dashboards for drift + performance (Great Expectations, Evidently, CloudWatch).
+4. Maintain an MLflow registry with at least two promoted versions plus rollback drills.
+5. Provide observability dashboards for drift + performance (Pandera/Evidently/CloudWatch).
 6. Ensure every teammate owns a major workstream and contributes 3–4 substantive PRs.
 
 ## Technical Scope
 
-- **Data Platform:** S3 bronze/silver/gold buckets, AWS Glue/Athena (or DuckDB locally), Step Functions.
-- **ML Stack:** SageMaker Processing/Training/Pipelines, XGBoost/LightGBM, optional SMOTE variants.
-- **Experimentation:** MLflow (tracking + registry), SHAP for interpretability, permutation importance.
-- **Feature Store:** SageMaker Feature Store (offline/online) or a light-weight OSS equivalent.
-- **Deployment:** Docker + GitHub Actions for CI/CD, IaC via CDK/Terraform, signed images.
-- **Monitoring:** Great Expectations, Evidently, CloudWatch canaries, drift/covariate shift simulations.
+- **Data platform:** DVC-tracked Kaggle snapshots stored under `data/raw/` plus optional S3/Azure remotes; DuckDB performs feature engineering locally.
+- **ML stack:** sklearn + XGBoost pipeline with SMOTE/downsampling controlled via `configs/baseline.yaml`; Pandera enforces data contracts at every hop.
+- **Experimentation:** MLflow (tracking + registry) with promotion helpers, SHAP/permutation importance reserved for future interpretability work.
+- **Feature store:** DuckDB SQL + Parquet artefacts served by the `creditrisk.features` module.
+- **Deployment:** Docker + GitHub Actions produce GHCR images for FastAPI + batch; CD optionally redeploys an ECS service and smoke-tests `/predict`.
+- **Monitoring:** Evidently drift reports, production drift monitor with CloudWatch publishing, structured logging, and freshness tracking via `creditrisk.utils.data_freshness`.
 
 ## Risk & Quality Management
 
-- Schema + missingness checks before every stage; policy-based retrain triggers on drift scenarios.
+- Schema + missingness checks before every stage using Pandera + ValidationRunner; policy-based retrain triggers when production drift exceeds the configured threshold.
 - Failure protocol: 30 min call within 24 h for disagreements, task redistribution for missed deadlines.
 - Quality bar: ≥70% unit/integration coverage on core libs, demo-ready docs (README, ARCHITECTURE, OPS).
 
