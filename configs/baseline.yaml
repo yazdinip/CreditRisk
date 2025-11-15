@@ -347,7 +347,7 @@ ingestion:
     - name: pos_cash_balance
       type: kaggle_competition
       decompress: true
-      checksum: 5ff35c48093c873baec6edc9090bd2e5
+      checksum: cb8e5cc3885d1e53753955ffde317b44
       output_path: data/raw/POS_CASH_balance.csv
       options:
         competition: home-credit-default-risk
