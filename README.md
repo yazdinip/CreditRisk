@@ -25,12 +25,12 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
    ```
    Dependencies live in `requirements.txt` (notably DVC, Pandera, PyArrow, MLflow).
 
-2. **Fetch raw datasets with DVC**
+2. **Fetch / validate the raw datasets**
    ```bash
-   dvc pull data/raw/application_train.csv.dvc
-   # add the remaining CSVs (bureau, bureau_balance, etc.) via `dvc add` if you own the Kaggle exports
+   # ensure your Kaggle API token lives under %USERPROFILE%\.kaggle\kaggle.json (or ~/.kaggle/kaggle.json)
+   python -m creditrisk.pipelines.ingest_data --config configs/baseline.yaml
    ```
-   Keep large artifacts out of git; DVC stores the pointers required for reproducibility.
+   The ingestion CLI uses the connector declared in `configs/baseline.yaml` (Kaggle competition downloads by default, but S3/Azure/DVC remotes are also supported) and enforces MD5 checksums before writing `reports/ingestion_summary.json`. If you already track the CSVs with DVC, flip the `type` to `dvc` and the same command will `dvc pull` the pinned bronze snapshot.
 
 3. **Run the full pipeline**
    ```bash
@@ -61,7 +61,7 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
 
 | Stage | CLI Entry Point | Description | Artifacts |
 |-------|-----------------|-------------|-----------|
-| `ingest_data` | `python -m creditrisk.pipelines.ingest_data` | Verifies or fetches the raw Kaggle extracts defined in `configs/baseline.yaml`, captures checksums, and writes `reports/ingestion_summary.json`. | `reports/ingestion_summary.json`, validated raw CSVs |
+| `ingest_data` | `python -m creditrisk.pipelines.ingest_data` | Uses the configured connector (Kaggle API, S3, Azure Blob, or DVC) to pull each raw table, enforces MD5 checksums, optionally decompresses archives, and writes `reports/ingestion_summary.json`. | `reports/ingestion_summary.json`, validated raw CSVs |
 | `build_feature_store` | `python -m creditrisk.pipelines.build_feature_store` | Loads all seven Kaggle extracts, enforces Pandera contracts, replays the DuckDB SQL feature engineering, and persists `data/processed/feature_store.parquet`. | Feature store parquet (165 cols) |
 | `split_data` | `python -m creditrisk.pipelines.split_data` | Validates the feature store, stratifies on `TARGET`, enforces no-leakage guarantees, and writes deterministic train/test parquet files. | `data/processed/train.parquet`, `data/processed/test.parquet` |
 | `train_baseline` | `python -m creditrisk.pipelines.train_baseline` | Loads cached splits, rebalances (SMOTE + downsampling), trains the XGBoost pipeline, writes metrics/plots, logs to MLflow, and auto-registers the model. | `models/baseline_model.joblib`, `reports/metrics.json`, `reports/evaluation/`, MLflow run & registry version |
@@ -70,6 +70,33 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
 | `monitor_drift` | `python -m creditrisk.monitoring.drift` | Runs Evidently’s drift preset on the persisted train vs. test splits to quantify distribution shifts and emit HTML/JSON dashboards. | `reports/drift_report.json`, `reports/drift_report.html` |
 
 You can invoke any stage independently (e.g., `dvc repro split_data`) for debugging or lightweight experimentation.
+
+### Raw Data Connectors & Checksums
+
+`configs/baseline.yaml` enumerates bronze datasets under `ingestion.sources`. Each entry specifies a `type`, optional `uri`, and connector-specific `options` so `python -m creditrisk.pipelines.ingest_data` knows where to fetch the table:
+
+1. **`kaggle` / `kaggle_competition` / `kaggle_dataset`** – authenticate with the Kaggle API token in `%USERPROFILE%\.kaggle\kaggle.json` (or `~/.kaggle/kaggle.json`). Provide `options.competition` and `options.file` for competition downloads, or `options.dataset` for dataset sources.
+2. **`s3` / `aws_s3`** – pull from `s3://bucket/key` using the default AWS credential chain (env vars, shared credentials, IAM). `options` accepts overrides like `bucket`, `key`, `profile`, `region`, `endpoint_url`, and `version_id`.
+3. **`azure_blob` / `azure`** – download from Azure Blob Storage via `options.connection_string` or (`options.account_url` + `options.credential`/`sas_token`). Always specify `options.container` and `options.blob`.
+4. **`dvc` / `dvc_remote`** – shell out to `dvc pull <target>` so nightly builds can hydrate the tracked snapshot without running ad-hoc scripts.
+
+All connectors funnel through the same materialization layer: archives are optionally decompressed (`decompress: true`), MD5 checksums are enforced (`checksum: ...`), and the results are logged to `reports/ingestion_summary.json` along with resolved URIs and file sizes. Example:
+
+```yaml
+ingestion:
+  sources:
+    - name: application_train
+      type: kaggle_competition
+      output_path: data/raw/application_train.csv
+      decompress: true
+      skip_if_exists: true  # drop the CSV manually to bypass the Kaggle call
+      checksum: 793a017f41fbac1dc28176b26dbab30e
+      options:
+        competition: home-credit-default-risk
+        file: application_train.csv
+```
+
+Downstream lineage (`reports/data_lineage.json`) links back to the same snapshot so every run remains auditable.
 
 ---
 

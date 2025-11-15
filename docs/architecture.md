@@ -8,7 +8,7 @@
 ## High-Level Flow
 
 1. **Data Layer & Ingestion (`ingest_data`)**
-   - `python -m creditrisk.pipelines.ingest_data --config configs/baseline.yaml` validates every Kaggle extract listed under `ingestion.sources`, copies/downloads them when needed, and writes a checksum summary to `reports/ingestion_summary.json`.
+   - `python -m creditrisk.pipelines.ingest_data --config configs/baseline.yaml` now speaks directly to Kaggle, S3, Azure Blob, or DVC remotes (based on each `ingestion.sources` entry), downloads/decompresses the raw tables, enforces MD5 checksums, and writes a bronze snapshot summary to `reports/ingestion_summary.json`.
    - All raw CSVs live in `data/raw/` and are tracked through DVC so downstream stages always have deterministic inputs.
    - `src/creditrisk/features/feature_store.py` runs the original DuckDB SQL notebook to enrich the application table with every aggregate. Additional feature utilities live under `src/creditrisk/features`.
 2. **Feature Engineering (`build_feature_store`)**

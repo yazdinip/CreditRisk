@@ -4,7 +4,7 @@
 
 | Stage | Status | Owner | Tooling | Description |
 |-------|--------|-------|---------|-------------|
-| `data_ingest` | ✅ | Data & Monitoring | DVC + Pandera + ingestion CLI | `python -m creditrisk.pipelines.ingest_data` validates/copies each Kaggle CSV and writes checksum metadata to `reports/ingestion_summary.json` so every run knows exactly which raw snapshot it used. |
+| `data_ingest` | ✅ | Data & Monitoring | DVC + Pandera + ingestion CLI | `python -m creditrisk.pipelines.ingest_data` now drives the real connectors (Kaggle API, S3, Azure Blob, or DVC) for each raw table, enforces MD5 checksums/decompression, and writes `reports/ingestion_summary.json` so every run knows exactly which bronze snapshot it used. |
 | `feature_build` | ✅ | Modeling | DuckDB via `creditrisk.features.feature_store` | Recreates the notebook feature store (applications + bureau/bureau_balance/previous + installments + credit_card + POS cash) and emits the curated column list tracked by DVC. |
 | `train_baseline` | ✅ | Modeling | `dvc repro train_baseline` / `python -m creditrisk.pipelines.train_baseline` | Trains the XGBoost pipeline, logs metrics + plots, writes lineage + registry metadata, and persists the serialized model for downstream jobs. |
 | `evaluate` | ✅ (plots) / 🔜 (comparisons) | QA | `creditrisk.utils.evaluation`, Evidently (planned) | Saves ROC/PR/calibration/confusion artifacts to `reports/evaluation/`; next iteration will add historical comparisons/drift checks. |

@@ -285,23 +285,58 @@ ingestion:
   fail_on_missing: true
   sources:
     - name: application_train
-      type: existing
+      type: kaggle_competition
+      decompress: true
+      checksum: 793a017f41fbac1dc28176b26dbab30e
       output_path: data/raw/application_train.csv
+      options:
+        competition: home-credit-default-risk
+        file: application_train.csv
     - name: bureau
-      type: existing
+      type: kaggle_competition
+      decompress: true
+      checksum: ec0f59a16e7071de66b83217b23bb390
       output_path: data/raw/bureau.csv
+      options:
+        competition: home-credit-default-risk
+        file: bureau.csv
     - name: bureau_balance
-      type: existing
+      type: kaggle_competition
+      decompress: true
+      checksum: 5e815ea6eb338752724bcf46da13c602
       output_path: data/raw/bureau_balance.csv
+      options:
+        competition: home-credit-default-risk
+        file: bureau_balance.csv
     - name: previous_application
-      type: existing
+      type: kaggle_competition
+      decompress: true
+      checksum: bd1eb5f08a4700414db1742e5cc0f9fa
       output_path: data/raw/previous_application.csv
+      options:
+        competition: home-credit-default-risk
+        file: previous_application.csv
     - name: installments_payments
-      type: existing
+      type: kaggle_competition
+      decompress: true
+      checksum: 4e9751972d02c376f0e75edbf6c9d07d
       output_path: data/raw/installments_payments.csv
+      options:
+        competition: home-credit-default-risk
+        file: installments_payments.csv
     - name: credit_card_balance
-      type: existing
+      type: kaggle_competition
+      decompress: true
+      checksum: ff83bfc2285d218802c6dff749bc5efc
       output_path: data/raw/credit_card_balance.csv
+      options:
+        competition: home-credit-default-risk
+        file: credit_card_balance.csv
     - name: pos_cash_balance
-      type: existing
+      type: kaggle_competition
+      decompress: true
+      checksum: 5ff35c48093c873baec6edc9090bd2e5
       output_path: data/raw/POS_CASH_balance.csv
+      options:
+        competition: home-credit-default-risk
+        file: POS_CASH_balance.csv

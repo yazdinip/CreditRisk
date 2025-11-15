@@ -230,9 +230,15 @@ class IngestionSourceConfig:
     output_path: Path = Path(".")
     checksum: Optional[str] = None
     decompress: bool = False
+    skip_if_exists: bool = True
+    options: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.output_path = Path(self.output_path)
+        if not isinstance(self.options, dict):
+            raise TypeError(f"Ingestion source 'options' must be a mapping, got {type(self.options)!r}")
+        # Normalize keys to simple dict so downstream handlers can mutate safely.
+        self.options = dict(self.options)
 
 
 @dataclass
@@ -421,6 +427,8 @@ class Config:
                         "output_path": str(source.output_path),
                         "checksum": source.checksum,
                         "decompress": source.decompress,
+                        "skip_if_exists": source.skip_if_exists,
+                        "options": source.options,
                     }
                     for source in self.ingestion.sources
                 ],
