@@ -40,4 +40,4 @@ jobs:
         run: pytest
 
       - name: DVC dry run
-        run: dvc repro --dry-run train_baseline
+        run: dvc repro --dry-run train_creditrisk_pd

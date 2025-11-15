@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run production drift monitoring and optional retraining triggers."
     )
-    parser.add_argument("--config", type=str, default="configs/baseline.yaml")
+    parser.add_argument("--config", type=str, default="configs/creditrisk_pd.yaml")
     parser.add_argument(
         "--reference",
         type=str,

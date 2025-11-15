@@ -36,9 +36,9 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
 2. **Fetch / validate the raw datasets**
    ```bash
    # ensure your Kaggle API token lives under %USERPROFILE%\.kaggle\kaggle.json (or ~/.kaggle/kaggle.json)
-   python -m creditrisk.pipelines.ingest_data --config configs/baseline.yaml
+   python -m creditrisk.pipelines.ingest_data --config configs/creditrisk_pd.yaml
    ```
-   The ingestion CLI uses the connector declared in `configs/baseline.yaml` (Kaggle competition downloads by default, but S3/Azure/DVC remotes are also supported) and enforces MD5 checksums before writing `reports/ingestion_summary.json`. If you already track the CSVs with DVC, flip the `type` to `dvc` and the same command will `dvc pull` the pinned bronze snapshot. Freshness metadata is derived from that file later.
+   The ingestion CLI uses the connector declared in `configs/creditrisk_pd.yaml` (Kaggle competition downloads by default, but S3/Azure/DVC remotes are also supported) and enforces MD5 checksums before writing `reports/ingestion_summary.json`. If you already track the CSVs with DVC, flip the `type` to `dvc` and the same command will `dvc pull` the pinned bronze snapshot. Freshness metadata is derived from that file later.
 
 3. **Run the full pipeline**
    ```bash
@@ -46,28 +46,31 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
    ```
    This executes the modular DAG:
    ```
-   ingest_data -> build_feature_store -> split_data -> train_baseline -> test_model -> validate_model
+   ingest_data -> build_feature_store -> split_data -> fit_model -> evaluate_train -> evaluate_test -> validate_model -> register_model
                                                         \
                                                          -> monitor_drift
    ```
    `ingest_data` validates or fetches the raw Kaggle extracts and writes `reports/ingestion_summary.json` so downstream lineage captures the exact snapshot used for the run.
    Outputs land in:
    - `data/processed/*.parquet` (feature store + deterministic splits)
-   - `models/baseline_model.joblib`
+      - `models/creditrisk_pd_model.joblib`
    - `reports/metrics.json`, `reports/test_metrics.json`, and `reports/evaluation/`
    - `reports/drift_report.json` + `reports/drift_report.html`
    - `reports/data_freshness.json` (generated via `python -m creditrisk.utils.data_freshness`)
+   - `reports/registry_transition.json` (written by `python -m creditrisk.pipelines.auto_promote`)
+   - `reports/canary_report.json` (optional canary validation summary)
+   - `reports/deploy_manifest.json` (deployment-ready manifest)
    - `mlruns/` (MLflow experiment + registry metadata)
 
 4. **Inspect / iterate**
    - Launch `mlflow ui` to review runs, metrics, and registered model versions.
-   - Update configs in `configs/baseline.yaml` (thresholds, registry behavior, validation toggles) and re-run `dvc repro`.
+   - Update configs in `configs/creditrisk_pd.yaml` (thresholds, registry behavior, validation toggles) and re-run `dvc repro`.
    - Use `python -m creditrisk.pipelines.promote_model --version <n> --stage Production --archive-existing` after governance sign-off.
 
 5. **Monitor production pulls**
    ```bash
    python -m creditrisk.monitoring.production \
-     --config configs/baseline.yaml \
+     --config configs/creditrisk_pd.yaml \
      --current data/production/<YYYY-MM-DD>.parquet \
      --publish-metrics
    ```
@@ -82,10 +85,14 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
 | `ingest_data` | `python -m creditrisk.pipelines.ingest_data` | Uses the configured connector (Kaggle API, S3, Azure Blob, or DVC) to pull each raw table, enforces MD5 checksums, optionally decompresses archives, and writes `reports/ingestion_summary.json`. | `reports/ingestion_summary.json`, validated raw CSVs |
 | `build_feature_store` | `python -m creditrisk.pipelines.build_feature_store` | Loads all seven Kaggle extracts, enforces Pandera contracts, replays the DuckDB SQL feature engineering, and persists `data/processed/feature_store.parquet`. | Feature store parquet (165 cols) |
 | `split_data` | `python -m creditrisk.pipelines.split_data` | Validates the feature store, stratifies on `TARGET`, enforces no-leakage guarantees, and writes deterministic train/test parquet files. | `data/processed/train.parquet`, `data/processed/test.parquet` |
-| `train_baseline` | `python -m creditrisk.pipelines.train_baseline` | Loads cached splits, rebalances (SMOTE + downsampling), trains the XGBoost pipeline, writes metrics/plots, logs to MLflow, and auto-registers the model. | `models/baseline_model.joblib`, `reports/metrics.json`, `reports/evaluation/`, MLflow run & registry version |
-| `test_model` | `python -m creditrisk.testing.test_dataset` | Scores the held-out test set, persists per-entity predictions, and generates evaluation plots. | `reports/test_metrics.json`, `reports/test_evaluation/`, `reports/test_predictions.parquet` |
+| `fit_model` | `python -m creditrisk.pipelines.train_creditrisk_pd --skip-artifacts` | Loads cached splits, rebalances (SMOTE + downsampling), trains the XGBoost pipeline, and logs to MLflow/registry without emitting evaluation artifacts. | `models/creditrisk_pd_model.joblib`, MLflow run & registry candidate |
+| `evaluate_train` | `python -m creditrisk.testing.test_dataset --split train` | Runs the trained pipeline against the cached train split, writes `reports/metrics.json`, and refreshes `reports/evaluation/`. | `reports/metrics.json`, `reports/evaluation/` |
+| `evaluate_test` | `python -m creditrisk.testing.test_dataset --split test` | Scores the held-out test split, persists per-entity predictions, and generates evaluation plots. | `reports/test_metrics.json`, `reports/test_evaluation/`, `reports/test_predictions.parquet` |
 | `validate_model` | `python -m creditrisk.testing.post_training` | Applies governance checks (metric thresholds, artifact integrity, lineage presence, MLflow alignment) before promotion. | `reports/post_training_validation.json` |
+| `register_model` | `python -m creditrisk.pipelines.auto_promote` | Reads validation, train/test metrics, drift, and canary reports before transitioning the MLflow model version; writes a promotion summary for audit trails. | `reports/registry_transition.json` |
 | `monitor_drift` | `python -m creditrisk.monitoring.drift` | Runs Evidently’s drift preset on the persisted train vs. test splits to quantify distribution shifts and emit HTML/JSON dashboards. | `reports/drift_report.json`, `reports/drift_report.html` |
+| `canary_validation` | `python -m creditrisk.pipelines.canary_validation` | Compares the candidate model against the current production model on a reference dataset before deploy; fails when approval-rate deltas exceed the tolerance. | `reports/canary_report.json` |
+| `deploy_manifest` | `python -m creditrisk.pipelines.deploy_manifest` | Packages pointers to the trained model, Dockerfiles, CI/CD workflow, and registry metadata into a JSON manifest consumed by deployment automation. | `reports/deploy_manifest.json` |
 
 You can invoke any stage independently (e.g., `dvc repro split_data`) for debugging or lightweight experimentation.
 
@@ -94,17 +101,20 @@ You can invoke any stage independently (e.g., `dvc repro split_data`) for debugg
 - `creditrisk.pipelines.ingest_data` – fetches Kaggle/S3/Azure/DVC sources, enforces checksums, and writes `reports/ingestion_summary.json`.
 - `creditrisk.pipelines.build_feature_store` – replays the DuckDB SQL + Pandera contracts to create `data/processed/feature_store.parquet`.
 - `creditrisk.pipelines.split_data` – stratifies, deduplicates, and validates the train/test splits.
-- `creditrisk.pipelines.train_baseline` – balances classes, trains/logs to MLflow, writes lineage + metrics + registry metadata.
-- `creditrisk.testing.test_dataset` / `creditrisk.testing.post_training` – regression suites that confirm score parity with MLflow entries before promotion.
+- `creditrisk.pipelines.train_creditrisk_pd` – balances classes, trains/logs to MLflow, registers a candidate version; use `--skip-artifacts` when the evaluation stage will handle metrics.
+- `creditrisk.testing.test_dataset --split train|test` – evaluates the cached splits, writes metrics/plots/predictions, and feeds downstream governance.
+- `creditrisk.testing.post_training` – regression suite that confirms score parity with MLflow entries before promotion.
 - `creditrisk.pipelines.batch_predict` – CLI used by schedulers to score CSVs into parquet/JSON (sharing the same pipeline + threshold).
 - `creditrisk.monitoring.drift` – compares cached train vs. test splits for drift and emits Evidently visualisations.
 - `creditrisk.monitoring.production` – loads reference vs. production pulls, logs `production_drift_report.{json,html}`, pushes CloudWatch metrics (when configured), and writes `reports/retrain_trigger.json`; add `--auto-retrain` to execute the configured retrain command.
 - `creditrisk.utils.data_freshness` – inspects ingestion metadata and fails CI/nightly runs when the feeds grow stale.
-- `creditrisk.pipelines.promote_model` / `creditrisk.pipelines.auto_promote` – bridge MLflow registry stages into deployment workflows.
+- `creditrisk.pipelines.promote_model` / `creditrisk.pipelines.auto_promote` – bridge MLflow registry stages into deployment workflows and log promotion results.
+- `creditrisk.pipelines.canary_validation` – compare the newly trained model against the last production build before shipping it to ECS/batch runners.
+- `creditrisk.pipelines.deploy_manifest` – emit `reports/deploy_manifest.json`, a manifest describing the model, Dockerfiles, CI/CD workflow, and secrets needed for ECS deployment.
 
 ### Raw Data Connectors & Checksums
 
-`configs/baseline.yaml` enumerates bronze datasets under `ingestion.sources`. Each entry specifies a `type`, optional `uri`, and connector-specific `options` so `python -m creditrisk.pipelines.ingest_data` knows where to fetch the table:
+`configs/creditrisk_pd.yaml` enumerates bronze datasets under `ingestion.sources`. Each entry specifies a `type`, optional `uri`, and connector-specific `options` so `python -m creditrisk.pipelines.ingest_data` knows where to fetch the table:
 
 1. **`kaggle` / `kaggle_competition` / `kaggle_dataset`** – authenticate with the Kaggle API token in `%USERPROFILE%\.kaggle\kaggle.json` (or `~/.kaggle/kaggle.json`). Provide `options.competition` and `options.file` for competition downloads, or `options.dataset` for dataset sources.
 2. **`s3` / `aws_s3`** – pull from `s3://bucket/key` using the default AWS credential chain (env vars, shared credentials, IAM). `options` accepts overrides like `bucket`, `key`, `profile`, `region`, `endpoint_url`, and `version_id`.
@@ -148,9 +158,9 @@ Before promoting a newly trained model, run:
 
 ```bash
 python -m creditrisk.pipelines.canary_validation \
-  --config configs/baseline.yaml \
-  --baseline-model /mlops/models/prod.joblib \
-  --candidate-model models/baseline_model.joblib \
+  --config configs/creditrisk_pd.yaml \
+  --production-model /mlops/models/prod.joblib \
+  --candidate-model models/creditrisk_pd_model.joblib \
   --dataset data/processed/test.parquet \
   --max-metric-delta 0.02
 ```
@@ -163,7 +173,7 @@ The CLI scores the same reference dataset with both pipelines and fails if appro
 
 - **Pandera schemas** (`src/creditrisk/validation/contracts.py`) cover every raw table plus the engineered feature store and persisted splits. They enforce ID integrity, allowable sentinel values (`DAYS_EMPLOYED`), numeric constraints, and binary targets.
 - **ValidationRunner** (`src/creditrisk/validation/runner.py`) wires those contracts into each pipeline stage. It also checks for duplicate entity IDs, train/test leakage, NaNs/inf in feature matrices, and missing engineered columns.
-- **Configurable enforcement** lives under the `validation` section of `configs/baseline.yaml`. Toggle `enforce_raw_contracts`, `enforce_feature_store_contract`, `enforce_split_contracts`, or `enforce_model_io_contracts` to relax checks in ad-hoc environments without touching the code.
+- **Configurable enforcement** lives under the `validation` section of `configs/creditrisk_pd.yaml`. Toggle `enforce_raw_contracts`, `enforce_feature_store_contract`, `enforce_split_contracts`, or `enforce_model_io_contracts` to relax checks in ad-hoc environments without touching the code.
 - **Outputs fail fast**: any schema drift, missing field, or leakage raises a descriptive exception with sample failure rows so you can troubleshoot before a model trains on bad data.
 
 ---
@@ -228,8 +238,14 @@ requirements.txt        # Environment spec (DVC, Pandera, PyArrow, MLflow, etc.)
 - **Trigger**: pushes to `main`.
 - **Core steps**: checkout + dependency install → optional DVC remote config → `dvc pull` → `dvc repro validate_model` → `dvc repro monitor_drift` → MLflow auto-promotion (when `reports/registry_promotion.json` indicates success) → build/push Docker images for API and batch (`ghcr.io/<repo>/creditrisk-{api|batch}:{latest,sha}`).
 - **Deployment**: when AWS secrets are set the workflow configures credentials, captures the live ECS task definition, swaps in the new image tag, deploys, waits for stability, and smoke-tests `/health` + `/predict`. Failures trigger automatic rollback to the prior task definition.
+- **Registry/Canary**: `dvc repro register_model` transitions the MLflow version only when the validation summary passes, and `dvc repro canary_validation` compares the candidate model against the current production artefact before ECS rollout. Both steps leave JSON breadcrumbs (`reports/registry_transition.json`, `reports/canary_report.json`) for auditors.
 - **Freshness gate**: `python -m creditrisk.utils.data_freshness --max-age-hours 48 --fail-on-stale` blocks releases when the upstream feeds go stale.
-- **Artefacts**: models, metrics, lineage, ingestion summaries, drift bundles, registry promotion reports, data freshness JSON, and production drift metrics are uploaded for auditors.
+- **Artefacts**: models, metrics, lineage, ingestion summaries, drift bundles, registry promotion reports, data freshness JSON, production drift metrics, canary summaries, and the deployment manifest are uploaded for auditors:
+  - `reports/metrics.json`, `reports/test_metrics.json`, `reports/evaluation/**`
+  - `reports/ingestion_summary.json`, `reports/data_lineage.json`, `reports/data_freshness.json`
+  - `reports/drift_report.{json,html}`, `reports/production_drift_report.{json,html}`, `reports/drift_metrics.json`
+  - `reports/post_training_validation.json`, `reports/registry_promotion.json`, `reports/registry_transition.json`
+  - `reports/canary_report.json`, `reports/retrain_trigger.json`, `reports/deploy_manifest.json`
 - **Secrets**:
 
 | Secret | Purpose |
@@ -252,7 +268,7 @@ When the AWS/ECS secrets are omitted, the workflow still runs the pipeline and p
 
 - **Why**: when you outgrow GitHub Actions + cron, drop this DAG into an Airflow environment. It mirrors the entire DVC pipeline, production monitor, and the new canary validation gate so you get stateful runs, retries, approvals, and failure visibility.
 - **Highlights**: each stage shells out to the same CLIs we use locally (`python -m creditrisk.pipelines.ingest_data`, `dvc repro ...`, `python -m creditrisk.monitoring.production`, `python -m creditrisk.pipelines.canary_validation`). Airflow Variables supply paths such as `creditrisk_repo`, `production_model_path`, and the production dataset, so you can promote between dev/staging/prod clusters without editing code.
-- **Next steps**: wire Airflow alerts to Slack and extend the DAG with Step Functions or ECS operators if you need to orchestrate multi-region deployments.
+- **Notifications**: pair the DAG with native Airflow alerting/approvals (Slack, Email, PagerDuty) or Step Functions/ECS operators when you need cross-account rollouts.
 
 See `docs/ci_cd.md` for a deeper breakdown plus manual run instructions.
 
@@ -272,13 +288,10 @@ See `docs/ci_cd.md` for a deeper breakdown plus manual run instructions.
 
 ---
 
-## Next Steps
+## Optional Enhancements
 
-1. **Alerting** – wire the nightly/CD results (freshness report, drift metrics, ECS deploy status) into Slack/webhooks so on-call teams are paged automatically.
-2. **Dashboards** – surface `reports/drift_metrics.json`, `reports/data_freshness.json`, and MLflow inference tags in Grafana/Looker for at-a-glance health.
-3. **Cost controls** – add model explainability snapshots (SHAP summaries) to the evaluation bundle so governance reviews don’t require ad-hoc notebooks.
-4. **Chaos testing** – script failure drills for ingestion outages or ECS rollbacks so the operational playbook is battle-tested before go-live.
-5. **Feature gating** – expand `configs/baseline.yaml` with per-environment overrides (dev/staging/prod) so secrets and thresholds can vary without editing the source file.
+- Pipe nightly/CD artefacts (freshness report, drift metrics, ECS deploy status) plus serving logs into Slack/webhooks or Grafana for operator awareness.
+- Layer in SHAP/explainability snapshots or chaos drills if your governance team requests deeper transparency or failover rehearsal.
 
 ---
 

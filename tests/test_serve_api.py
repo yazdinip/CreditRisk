@@ -2,7 +2,7 @@ import joblib
 import pandas as pd
 from fastapi.testclient import TestClient
 
-from creditrisk.models.baseline import build_training_pipeline
+from creditrisk.models.creditrisk_pd import build_training_pipeline
 from creditrisk.serve.api import create_app
 from .utils import build_test_config
 

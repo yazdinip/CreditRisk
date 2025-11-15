@@ -38,7 +38,7 @@ def _summarize_artifacts(artifacts: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def build_freshness_report(
-    config_path: str = "configs/baseline.yaml",
+    config_path: str = "configs/creditrisk_pd.yaml",
     max_age_hours: float = 24.0,
     output_path: Path | None = None,
 ) -> Dict[str, Any]:
@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/baseline.yaml",
+        default="configs/creditrisk_pd.yaml",
         help="Path to the experiment configuration YAML.",
     )
     parser.add_argument(

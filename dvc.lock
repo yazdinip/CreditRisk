@@ -1,86 +1,33 @@
 schema: '2.0'
 stages:
-  train_baseline:
-    cmd: python -X faulthandler -m creditrisk.pipelines.train_baseline --config configs/baseline.yaml
+  ingest_data:
+    cmd: python -X faulthandler -m creditrisk.pipelines.ingest_data --config configs/creditrisk_pd.yaml
     deps:
-    - path: configs/baseline.yaml
+    - path: configs/creditrisk_pd.yaml
       hash: md5
-      md5: d79cce98f0fd77777c56d949efbc7718
-      size: 9669
-    - path: data/processed/test.parquet
-      hash: md5
-      md5: 64878897b1e40fd7f25e927b0f57546e
-      size: 11249755
-    - path: data/processed/train.parquet
-      hash: md5
-      md5: bd001023bff59a7022b70ef96e9470d4
-      size: 41000611
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
     - path: src/creditrisk/config.py
       hash: md5
-      md5: f33b061c0da405e3b58ff4defc01128b
-      size: 20215
-    - path: src/creditrisk/data/datasets.py
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
+    - path: src/creditrisk/pipelines/ingest_data.py
       hash: md5
-      md5: c6f52053ac188a5cd80628ac7ee26d80
-      size: 1766
-    - path: src/creditrisk/features/preprocess.py
-      hash: md5
-      md5: b1b88832300444941670e9eca699f87d
-      size: 6547
-    - path: src/creditrisk/models/baseline.py
-      hash: md5
-      md5: 447d7a1d4616dca78aa31d436c46dedc
-      size: 6035
-    - path: src/creditrisk/pipelines/data_workflow.py
-      hash: md5
-      md5: 9d172e75a5ea2969c7a97cc8ac95deb1
-      size: 6908
-    - path: src/creditrisk/pipelines/train_baseline.py
-      hash: md5
-      md5: ef59fbc7b4eb02823a951ab7c5b5ccf6
-      size: 9114
-    - path: src/creditrisk/utils/evaluation.py
-      hash: md5
-      md5: 6dc4202f0234e7371386e05b14f8d6cb
-      size: 3624
-    - path: src/creditrisk/validation/contracts.py
-      hash: md5
-      md5: a0c94f10fbddf98c934d3067438835bb
-      size: 6038
-    - path: src/creditrisk/validation/runner.py
-      hash: md5
-      md5: a57a7d91205fb6e868518fc8e5ce5e55
-      size: 6673
-    params:
-      configs/baseline.yaml:
-        data.raw_path: data/raw/application_train.csv
-        data.target_column: TARGET
-        model.type: xgboost
-        training.class_weight: balanced
-        training.random_state: 42
-        training.test_size: 0.2
+      md5: bec0732a228b4d06b829d2cee499088f
+      size: 18092
     outs:
-    - path: models/baseline_model.joblib
+    - path: reports/ingestion_summary.json
       hash: md5
-      md5: 3f98f5685f8b94b263732c84adf6d8d7
-      size: 1242274
-    - path: reports/evaluation
-      hash: md5
-      md5: b9cca32ff0b7ecf00f05b5bba4ab30f3.dir
-      size: 144150
-      nfiles: 5
-    - path: reports/metrics.json
-      hash: md5
-      md5: 9fbe15654303f9ad96c0d60838a744e9
-      size: 214
+      md5: e7a459fc0a4e4507167e75af56b54eb4
+      size: 2324
   build_feature_store:
     cmd: python -X faulthandler -m creditrisk.pipelines.build_feature_store --config
-      configs/baseline.yaml
+      configs/creditrisk_pd.yaml
     deps:
-    - path: configs/baseline.yaml
+    - path: configs/creditrisk_pd.yaml
       hash: md5
-      md5: d79cce98f0fd77777c56d949efbc7718
-      size: 9669
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
     - path: data/raw/POS_CASH_balance.csv
       hash: md5
       md5: cb8e5cc3885d1e53753955ffde317b44
@@ -115,8 +62,8 @@ stages:
       size: 2324
     - path: src/creditrisk/config.py
       hash: md5
-      md5: f33b061c0da405e3b58ff4defc01128b
-      size: 20215
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
     - path: src/creditrisk/data/datasets.py
       hash: md5
       md5: c6f52053ac188a5cd80628ac7ee26d80
@@ -131,8 +78,8 @@ stages:
       size: 6547
     - path: src/creditrisk/pipelines/build_feature_store.py
       hash: md5
-      md5: 9b0ae24f9003dc07aa655db94608efc7
-      size: 1460
+      md5: b0ea2ffdb2f24b10156cb20092361357
+      size: 1512
     - path: src/creditrisk/pipelines/data_workflow.py
       hash: md5
       md5: 9d172e75a5ea2969c7a97cc8ac95deb1
@@ -148,23 +95,23 @@ stages:
     outs:
     - path: data/processed/feature_store.parquet
       hash: md5
-      md5: eeae02847f17981626f2e5914839ad14
-      size: 49889450
+      md5: 2520e05eb456b986c2b7747ea88374dc
+      size: 49891914
   split_data:
-    cmd: python -X faulthandler -m creditrisk.pipelines.split_data --config configs/baseline.yaml
+    cmd: python -X faulthandler -m creditrisk.pipelines.split_data --config configs/creditrisk_pd.yaml
     deps:
-    - path: configs/baseline.yaml
+    - path: configs/creditrisk_pd.yaml
       hash: md5
-      md5: d79cce98f0fd77777c56d949efbc7718
-      size: 9669
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
     - path: data/processed/feature_store.parquet
       hash: md5
-      md5: eeae02847f17981626f2e5914839ad14
-      size: 49889450
+      md5: 2520e05eb456b986c2b7747ea88374dc
+      size: 49891914
     - path: src/creditrisk/config.py
       hash: md5
-      md5: f33b061c0da405e3b58ff4defc01128b
-      size: 20215
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
     - path: src/creditrisk/data/datasets.py
       hash: md5
       md5: c6f52053ac188a5cd80628ac7ee26d80
@@ -175,8 +122,8 @@ stages:
       size: 6908
     - path: src/creditrisk/pipelines/split_data.py
       hash: md5
-      md5: 8dc276bf1e4ff8da76cc5adf54590664
-      size: 2696
+      md5: aeae73d6c41d35d38f86cc82df454703
+      size: 2785
     - path: src/creditrisk/validation/contracts.py
       hash: md5
       md5: a0c94f10fbddf98c934d3067438835bb
@@ -188,84 +135,110 @@ stages:
     outs:
     - path: data/processed/test.parquet
       hash: md5
-      md5: 64878897b1e40fd7f25e927b0f57546e
-      size: 11249755
+      md5: 80d5a2ba9d31624858e1047d1ffbeb81
+      size: 11247331
     - path: data/processed/train.parquet
       hash: md5
-      md5: bd001023bff59a7022b70ef96e9470d4
-      size: 41000611
-  validate_model:
-    cmd: python -X faulthandler -m creditrisk.testing.post_training --config configs/baseline.yaml
-      --metrics-file reports/test_metrics.json --evaluation-dir reports/test_evaluation
+      md5: cd801904b1f74aed5cfde94735512776
+      size: 40985010
+  fit_model:
+    cmd: python -X faulthandler -m creditrisk.pipelines.train_creditrisk_pd --config
+      configs/creditrisk_pd.yaml --skip-artifacts
     deps:
-    - path: configs/baseline.yaml
+    - path: configs/creditrisk_pd.yaml
       hash: md5
-      md5: d79cce98f0fd77777c56d949efbc7718
-      size: 9669
-    - path: mlruns
-      hash: md5
-      md5: 1909e654e68d2ab569853e501ca8af7d.dir
-      size: 17443146
-      nfiles: 589
-    - path: reports/test_evaluation
-      hash: md5
-      md5: b9cca32ff0b7ecf00f05b5bba4ab30f3.dir
-      size: 144150
-      nfiles: 5
-    - path: reports/test_metrics.json
-      hash: md5
-      md5: 9fbe15654303f9ad96c0d60838a744e9
-      size: 214
-    - path: src/creditrisk/config.py
-      hash: md5
-      md5: f33b061c0da405e3b58ff4defc01128b
-      size: 20215
-    - path: src/creditrisk/testing/post_training.py
-      hash: md5
-      md5: 1340a7e67ff46ee44dfa341392a73ce6
-      size: 12276
-    outs:
-    - path: reports/post_training_validation.json
-      hash: md5
-      md5: fd78759571742756c39b7052dbbfd379
-      size: 1794
-  test_model:
-    cmd: python -X faulthandler -m creditrisk.testing.test_dataset --config configs/baseline.yaml
-      --metrics-file reports/test_metrics.json --predictions-file reports/test_predictions.parquet
-      --evaluation-dir reports/test_evaluation
-    deps:
-    - path: configs/baseline.yaml
-      hash: md5
-      md5: d79cce98f0fd77777c56d949efbc7718
-      size: 9669
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
     - path: data/processed/test.parquet
       hash: md5
-      md5: 64878897b1e40fd7f25e927b0f57546e
-      size: 11249755
-    - path: models/baseline_model.joblib
+      md5: 80d5a2ba9d31624858e1047d1ffbeb81
+      size: 11247331
+    - path: data/processed/train.parquet
+      hash: md5
+      md5: cd801904b1f74aed5cfde94735512776
+      size: 40985010
+    - path: src/creditrisk/config.py
+      hash: md5
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
+    - path: src/creditrisk/data/datasets.py
+      hash: md5
+      md5: c6f52053ac188a5cd80628ac7ee26d80
+      size: 1766
+    - path: src/creditrisk/features/preprocess.py
+      hash: md5
+      md5: b1b88832300444941670e9eca699f87d
+      size: 6547
+    - path: src/creditrisk/models/creditrisk_pd.py
+      hash: md5
+      md5: fffa18b62c81bd017a64f23f4e8afaa2
+      size: 6040
+    - path: src/creditrisk/pipelines/data_workflow.py
+      hash: md5
+      md5: 9d172e75a5ea2969c7a97cc8ac95deb1
+      size: 6908
+    - path: src/creditrisk/pipelines/train_creditrisk_pd.py
+      hash: md5
+      md5: a74a316f9ad656c79b1a80b25c22ab61
+      size: 9747
+    - path: src/creditrisk/validation/contracts.py
+      hash: md5
+      md5: a0c94f10fbddf98c934d3067438835bb
+      size: 6038
+    - path: src/creditrisk/validation/runner.py
+      hash: md5
+      md5: a57a7d91205fb6e868518fc8e5ce5e55
+      size: 6673
+    params:
+      configs/creditrisk_pd.yaml:
+        data.raw_path: data/raw/application_train.csv
+        data.target_column: TARGET
+        model.type: xgboost
+        training.class_weight: balanced
+        training.random_state: 42
+        training.test_size: 0.2
+    outs:
+    - path: models/creditrisk_pd_model.joblib
+      hash: md5
+      md5: 3f98f5685f8b94b263732c84adf6d8d7
+      size: 1242274
+  evaluate_test:
+    cmd: python -X faulthandler -m creditrisk.testing.test_dataset --config configs/creditrisk_pd.yaml
+      --split test --metrics-file reports/test_metrics.json --predictions-file reports/test_predictions.parquet
+      --evaluation-dir reports/test_evaluation
+    deps:
+    - path: configs/creditrisk_pd.yaml
+      hash: md5
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
+    - path: data/processed/test.parquet
+      hash: md5
+      md5: 80d5a2ba9d31624858e1047d1ffbeb81
+      size: 11247331
+    - path: models/creditrisk_pd_model.joblib
       hash: md5
       md5: 3f98f5685f8b94b263732c84adf6d8d7
       size: 1242274
     - path: src/creditrisk/config.py
       hash: md5
-      md5: f33b061c0da405e3b58ff4defc01128b
-      size: 20215
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
     - path: src/creditrisk/data/datasets.py
       hash: md5
       md5: c6f52053ac188a5cd80628ac7ee26d80
       size: 1766
-    - path: src/creditrisk/models/baseline.py
+    - path: src/creditrisk/models/creditrisk_pd.py
       hash: md5
-      md5: 447d7a1d4616dca78aa31d436c46dedc
-      size: 6035
+      md5: fffa18b62c81bd017a64f23f4e8afaa2
+      size: 6040
     - path: src/creditrisk/pipelines/data_workflow.py
       hash: md5
       md5: 9d172e75a5ea2969c7a97cc8ac95deb1
       size: 6908
     - path: src/creditrisk/testing/test_dataset.py
       hash: md5
-      md5: 7efe2261a29b8dc088336e7cf0ba7d99
-      size: 5948
+      md5: 13794d049ccd542bd53ee77f63b4f3c9
+      size: 7554
     - path: src/creditrisk/utils/evaluation.py
       hash: md5
       md5: 6dc4202f0234e7371386e05b14f8d6cb
@@ -284,53 +257,182 @@ stages:
       hash: md5
       md5: 21a2b997ccb9cd4da32b018e38fd4eab
       size: 808153
-  ingest_data:
-    cmd: python -X faulthandler -m creditrisk.pipelines.ingest_data --config configs/baseline.yaml
+  validate_model:
+    cmd: python -X faulthandler -m creditrisk.testing.post_training --config configs/creditrisk_pd.yaml
+      --metrics-file reports/test_metrics.json --evaluation-dir reports/test_evaluation
     deps:
-    - path: configs/baseline.yaml
+    - path: configs/creditrisk_pd.yaml
       hash: md5
-      md5: d79cce98f0fd77777c56d949efbc7718
-      size: 9669
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
+    - path: mlruns
+      hash: md5
+      md5: f90197a9cb9bb72d96bb1b618c78a583.dir
+      size: 23672581
+      nfiles: 799
+    - path: reports/test_evaluation
+      hash: md5
+      md5: b9cca32ff0b7ecf00f05b5bba4ab30f3.dir
+      size: 144150
+      nfiles: 5
+    - path: reports/test_metrics.json
+      hash: md5
+      md5: 9fbe15654303f9ad96c0d60838a744e9
+      size: 214
     - path: src/creditrisk/config.py
       hash: md5
-      md5: f33b061c0da405e3b58ff4defc01128b
-      size: 20215
-    - path: src/creditrisk/pipelines/ingest_data.py
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
+    - path: src/creditrisk/testing/post_training.py
       hash: md5
-      md5: a8bdf95cc92243f4c5c5cbf685a2be26
-      size: 17606
+      md5: 1ae51d5958ef62c1aebb0e7cb728e3dc
+      size: 12616
     outs:
-    - path: reports/ingestion_summary.json
+    - path: reports/post_training_validation.json
       hash: md5
-      md5: e7a459fc0a4e4507167e75af56b54eb4
-      size: 2324
-  monitor_drift:
-    cmd: python -X faulthandler -m creditrisk.monitoring.drift --config configs/baseline.yaml
+      md5: 233627d1980990f37b36cca524f2591f
+      size: 1794
+  evaluate_train:
+    cmd: python -X faulthandler -m creditrisk.testing.test_dataset --config configs/creditrisk_pd.yaml
+      --split train --skip-predictions
     deps:
-    - path: configs/baseline.yaml
+    - path: configs/creditrisk_pd.yaml
       hash: md5
-      md5: d79cce98f0fd77777c56d949efbc7718
-      size: 9669
-    - path: data/processed/test.parquet
-      hash: md5
-      md5: 64878897b1e40fd7f25e927b0f57546e
-      size: 11249755
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
     - path: data/processed/train.parquet
       hash: md5
-      md5: bd001023bff59a7022b70ef96e9470d4
-      size: 41000611
+      md5: cd801904b1f74aed5cfde94735512776
+      size: 40985010
+    - path: models/creditrisk_pd_model.joblib
+      hash: md5
+      md5: 3f98f5685f8b94b263732c84adf6d8d7
+      size: 1242274
     - path: src/creditrisk/config.py
       hash: md5
-      md5: f33b061c0da405e3b58ff4defc01128b
-      size: 20215
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
+    - path: src/creditrisk/data/datasets.py
+      hash: md5
+      md5: c6f52053ac188a5cd80628ac7ee26d80
+      size: 1766
+    - path: src/creditrisk/models/creditrisk_pd.py
+      hash: md5
+      md5: fffa18b62c81bd017a64f23f4e8afaa2
+      size: 6040
+    - path: src/creditrisk/pipelines/data_workflow.py
+      hash: md5
+      md5: 9d172e75a5ea2969c7a97cc8ac95deb1
+      size: 6908
+    - path: src/creditrisk/testing/test_dataset.py
+      hash: md5
+      md5: 13794d049ccd542bd53ee77f63b4f3c9
+      size: 7554
+    - path: src/creditrisk/utils/evaluation.py
+      hash: md5
+      md5: 6dc4202f0234e7371386e05b14f8d6cb
+      size: 3624
+    outs:
+    - path: reports/evaluation
+      hash: md5
+      md5: d377c3d2cae3de06ca5c84277c1a2339.dir
+      size: 155193
+      nfiles: 5
+    - path: reports/metrics.json
+      hash: md5
+      md5: ccd92147e21a55b04f210d7469748062
+      size: 213
+  register_model:
+    cmd: python -X faulthandler -m creditrisk.pipelines.auto_promote --config configs/creditrisk_pd.yaml
+      --stage Production --report reports/registry_promotion.json --transition-log
+      reports/registry_transition.json
+    deps:
+    - path: configs/creditrisk_pd.yaml
+      hash: md5
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
+    - path: reports/canary_report.json
+      hash: md5
+      md5: 22bf8549517a0199bd5683548e414f75
+      size: 242
+    - path: reports/drift_report.html
+      hash: md5
+      md5: 6b82aae23ad7981baa04a2f868f48dd1
+      size: 4500200
+    - path: reports/drift_report.json
+      hash: md5
+      md5: 1baea3c94c3923e0cccb0bbbb1293fca
+      size: 95259
+    - path: reports/evaluation
+      hash: md5
+      md5: d377c3d2cae3de06ca5c84277c1a2339.dir
+      size: 155193
+      nfiles: 5
+    - path: reports/metrics.json
+      hash: md5
+      md5: ccd92147e21a55b04f210d7469748062
+      size: 213
+    - path: reports/post_training_validation.json
+      hash: md5
+      md5: 233627d1980990f37b36cca524f2591f
+      size: 1794
+    - path: reports/registry_promotion.json
+      hash: md5
+      md5: 912fbbe322683580360baec791051528
+      size: 438
+    - path: reports/test_evaluation
+      hash: md5
+      md5: b9cca32ff0b7ecf00f05b5bba4ab30f3.dir
+      size: 144150
+      nfiles: 5
+    - path: reports/test_metrics.json
+      hash: md5
+      md5: 9fbe15654303f9ad96c0d60838a744e9
+      size: 214
+    - path: src/creditrisk/config.py
+      hash: md5
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
+    - path: src/creditrisk/mlops/registry.py
+      hash: md5
+      md5: 822c06f16acd7d963b0a539ec37dd5df
+      size: 5448
+    - path: src/creditrisk/pipelines/auto_promote.py
+      hash: md5
+      md5: 236b91baef0cc05cdeac546badc1a7f8
+      size: 3930
+    outs:
+    - path: reports/registry_transition.json
+      hash: md5
+      md5: 7e03f3294c7f34e54ecaf1846b44576a
+      size: 129
+  monitor_drift:
+    cmd: python -X faulthandler -m creditrisk.monitoring.drift --config configs/creditrisk_pd.yaml
+    deps:
+    - path: configs/creditrisk_pd.yaml
+      hash: md5
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
+    - path: data/processed/test.parquet
+      hash: md5
+      md5: 80d5a2ba9d31624858e1047d1ffbeb81
+      size: 11247331
+    - path: data/processed/train.parquet
+      hash: md5
+      md5: cd801904b1f74aed5cfde94735512776
+      size: 40985010
+    - path: src/creditrisk/config.py
+      hash: md5
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
     - path: src/creditrisk/monitoring/__init__.py
       hash: md5
       md5: a1dc4cc970766510f205a55268940913
       size: 189
     - path: src/creditrisk/monitoring/drift.py
       hash: md5
-      md5: cd10c6f6e86782eb53508f95c9ad9c09
-      size: 13708
+      md5: 8c6d9961c3816b49854ca7dacb443a88
+      size: 14118
     - path: src/creditrisk/pipelines/data_workflow.py
       hash: md5
       md5: 9d172e75a5ea2969c7a97cc8ac95deb1
@@ -338,9 +440,88 @@ stages:
     outs:
     - path: reports/drift_report.html
       hash: md5
-      md5: 3d6d0df98fc230a96cfe6ffd9290f1f2
+      md5: 6b82aae23ad7981baa04a2f868f48dd1
       size: 4500200
     - path: reports/drift_report.json
       hash: md5
-      md5: c598b2a2c8454a3723a02f4e0fc5f8d0
+      md5: 1baea3c94c3923e0cccb0bbbb1293fca
       size: 95259
+  canary_validation:
+    cmd: python -X faulthandler -m creditrisk.pipelines.canary_validation --config
+      configs/creditrisk_pd.yaml --candidate-model models/creditrisk_pd_model.joblib
+      --dataset data/processed/test.parquet --output reports/canary_report.json
+    deps:
+    - path: configs/creditrisk_pd.yaml
+      hash: md5
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
+    - path: data/processed/test.parquet
+      hash: md5
+      md5: 80d5a2ba9d31624858e1047d1ffbeb81
+      size: 11247331
+    - path: models/creditrisk_pd_model.joblib
+      hash: md5
+      md5: 3f98f5685f8b94b263732c84adf6d8d7
+      size: 1242274
+    - path: src/creditrisk/config.py
+      hash: md5
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
+    - path: src/creditrisk/pipelines/canary_validation.py
+      hash: md5
+      md5: dfc91de4c7bc693082e1345df731a1cb
+      size: 6214
+    - path: src/creditrisk/pipelines/data_workflow.py
+      hash: md5
+      md5: 9d172e75a5ea2969c7a97cc8ac95deb1
+      size: 6908
+    - path: src/creditrisk/prediction/helpers.py
+      hash: md5
+      md5: 7680562cb589ebae57adfcc91b4dcd32
+      size: 1411
+    outs:
+    - path: reports/canary_report.json
+      hash: md5
+      md5: 22bf8549517a0199bd5683548e414f75
+      size: 242
+  deploy_manifest:
+    cmd: python -X faulthandler -m creditrisk.pipelines.deploy_manifest --config configs/creditrisk_pd.yaml
+      --output reports/deploy_manifest.json
+    deps:
+    - path: .github/workflows/cd.yaml
+      hash: md5
+      md5: 6b72c40b5dfc915154391f33217ec13a
+      size: 6282
+    - path: Dockerfile.api
+      hash: md5
+      md5: dd08d4d211a86d2aee2d6611b5beb02e
+      size: 384
+    - path: Dockerfile.batch
+      hash: md5
+      md5: 6a335b4b8a5bc1c280c314f97bfb2c9c
+      size: 354
+    - path: configs/creditrisk_pd.yaml
+      hash: md5
+      md5: d6b40d8408c8b766edd4146155f7235d
+      size: 9676
+    - path: reports/canary_report.json
+      hash: md5
+      md5: 22bf8549517a0199bd5683548e414f75
+      size: 242
+    - path: reports/registry_transition.json
+      hash: md5
+      md5: 7e03f3294c7f34e54ecaf1846b44576a
+      size: 129
+    - path: src/creditrisk/config.py
+      hash: md5
+      md5: c6536ad3ffdbea02a878f133b664b938
+      size: 20494
+    - path: src/creditrisk/pipelines/deploy_manifest.py
+      hash: md5
+      md5: e65c5bfa822e1a69ac23ce8cc2509251
+      size: 2699
+    outs:
+    - path: reports/deploy_manifest.json
+      hash: md5
+      md5: 3c2f1e0d0a3d5af87a2a47d5ca82f79a
+      size: 1014

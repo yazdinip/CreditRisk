@@ -1,4 +1,4 @@
-"""Run the trained pipeline against the held-out test split."""
+"""Evaluate the trained pipeline against cached splits."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import pandas as pd
 
 from creditrisk.config import Config
 from creditrisk.data.datasets import split_features_target
-from creditrisk.models.baseline import evaluate_classifier
+from creditrisk.models.creditrisk_pd import evaluate_classifier
 from creditrisk.pipelines.data_workflow import load_dataframe
 from creditrisk.utils.evaluation import save_evaluation_artifacts
 
@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/baseline.yaml",
+        default="configs/creditrisk_pd.yaml",
         help="Path to the experiment configuration YAML.",
     )
     parser.add_argument(
@@ -37,22 +37,33 @@ def parse_args() -> argparse.Namespace:
         help="Optional override for the trained model path.",
     )
     parser.add_argument(
-        "--test-data",
+        "--split",
+        choices=("train", "test"),
+        default="test",
+        help="Which cached split to evaluate.",
+    )
+    parser.add_argument(
+        "--data-path",
         type=str,
         default=None,
-        help="Optional override for the test parquet path.",
+        help="Optional override for the split parquet path.",
     )
     parser.add_argument(
         "--metrics-file",
         type=str,
         default=None,
-        help="Where to persist the computed test metrics JSON.",
+        help="Where to persist the computed metrics JSON.",
     )
     parser.add_argument(
         "--predictions-file",
         type=str,
         default=None,
-        help="Where to persist the per-record predictions parquet.",
+        help="Where to persist the per-record predictions parquet (default: only for test split).",
+    )
+    parser.add_argument(
+        "--skip-predictions",
+        action="store_true",
+        help="Skip writing per-record predictions.",
     )
     parser.add_argument(
         "--evaluation-dir",
@@ -76,8 +87,10 @@ def _save_predictions(
     y_true: pd.Series,
     y_pred: pd.Series,
     y_prob: Optional[pd.Series],
-    output_path: Path,
+    output_path: Optional[Path],
 ) -> None:
+    if output_path is None:
+        return
     payload = pd.DataFrame(
         {
             entity_column: entity_ids,
@@ -120,23 +133,24 @@ def run_test_suite(
     config: Config,
     *,
     model_path: Path,
-    test_path: Path,
+    split_path: Path,
+    split_name: str,
     metrics_path: Path,
-    predictions_path: Path,
+    predictions_path: Optional[Path],
     evaluation_dir: Path,
 ) -> Dict[str, float]:
     LOGGER.info("Loading model from %s", model_path)
     pipeline = _load_pipeline(model_path)
 
-    LOGGER.info("Loading test split from %s", test_path)
-    test_df = load_dataframe(test_path)
+    LOGGER.info("Loading %s split from %s", split_name, split_path)
+    dataset = load_dataframe(split_path)
 
     entity_column = config.data.entity_id_column
     target_column = config.data.target_column
 
-    entity_ids = test_df[entity_column].reset_index(drop=True)
+    entity_ids = dataset[entity_column].reset_index(drop=True)
     X_test, y_test = split_features_target(
-        test_df,
+        dataset,
         target_column=target_column,
         drop_columns=[entity_column],
     )
@@ -146,14 +160,15 @@ def run_test_suite(
     metrics = evaluate_classifier(pipeline, X_test, y_test)
 
     _dump_metrics(metrics, metrics_path)
-    _save_predictions(
-        entity_ids,
-        entity_column,
-        y_test.reset_index(drop=True),
-        y_pred.reset_index(drop=True),
-        y_prob,
-        predictions_path,
-    )
+    if predictions_path is not None:
+        _save_predictions(
+            entity_ids,
+            entity_column,
+            y_test.reset_index(drop=True),
+            y_pred.reset_index(drop=True),
+            y_prob,
+            predictions_path,
+        )
 
     save_evaluation_artifacts(
         y_true=y_test.to_numpy(),
@@ -172,25 +187,46 @@ def main() -> None:
     config = Config.from_yaml(args.config)
 
     model_path = Path(args.model_path) if args.model_path else config.paths.model_path
-    test_path = Path(args.test_data) if args.test_data else Path(config.paths.test_set_path)
-    metrics_path = (
-        Path(args.metrics_file) if args.metrics_file else Path(config.paths.metrics_file)
-    )
-    predictions_path = (
-        Path(args.predictions_file)
-        if args.predictions_file
-        else Path(config.paths.reports_dir) / "test_predictions.parquet"
-    )
-    evaluation_dir = (
-        Path(args.evaluation_dir)
-        if args.evaluation_dir
-        else Path(config.paths.evaluation_dir)
-    )
+    if args.split == "train":
+        split_path = Path(args.data_path) if args.data_path else Path(config.paths.train_set_path)
+        metrics_path = (
+            Path(args.metrics_file) if args.metrics_file else Path(config.paths.metrics_file)
+        )
+        evaluation_dir = (
+            Path(args.evaluation_dir)
+            if args.evaluation_dir
+            else Path(config.paths.evaluation_dir)
+        )
+        predictions_path = (
+            Path(args.predictions_file)
+            if args.predictions_file
+            else (None if args.skip_predictions else Path(config.paths.reports_dir) / "train_predictions.parquet")
+        )
+    else:
+        split_path = Path(args.data_path) if args.data_path else Path(config.paths.test_set_path)
+        metrics_path = (
+            Path(args.metrics_file)
+            if args.metrics_file
+            else Path(config.paths.reports_dir) / "test_metrics.json"
+        )
+        evaluation_dir = (
+            Path(args.evaluation_dir)
+            if args.evaluation_dir
+            else Path(config.paths.reports_dir) / "test_evaluation"
+        )
+        predictions_path = (
+            None
+            if args.skip_predictions
+            else Path(args.predictions_file)
+            if args.predictions_file
+            else Path(config.paths.reports_dir) / "test_predictions.parquet"
+        )
 
     run_test_suite(
         config,
         model_path=model_path,
-        test_path=test_path,
+        split_path=split_path,
+        split_name=args.split,
         metrics_path=metrics_path,
         predictions_path=predictions_path,
         evaluation_dir=evaluation_dir,

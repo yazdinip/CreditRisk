@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from creditrisk.models.baseline import build_training_pipeline
+from creditrisk.models.creditrisk_pd import build_training_pipeline
 from creditrisk.pipelines.canary_validation import run_canary_validation
 from tests.utils import build_test_config
 
@@ -34,15 +34,15 @@ def test_canary_validation_passes_with_identical_models(tmp_path):
     df.to_parquet(dataset_path, index=False)
 
     pipeline = _train_pipeline(cfg, df)
-    baseline_path = tmp_path / "baseline.joblib"
-    joblib.dump(pipeline, baseline_path)
+    production_path = tmp_path / "production.joblib"
+    joblib.dump(pipeline, production_path)
     candidate_path = tmp_path / "candidate.joblib"
     joblib.dump(pipeline, candidate_path)
 
     report_path = tmp_path / "report.json"
     summary = run_canary_validation(
         cfg,
-        baseline_model_path=baseline_path,
+        production_model_path=production_path,
         candidate_model_path=candidate_path,
         dataset_path=dataset_path,
         max_metric_delta=0.01,
@@ -65,9 +65,9 @@ def test_canary_validation_fails_when_metrics_diverge(tmp_path):
     dataset_path = tmp_path / "dataset.parquet"
     df.to_parquet(dataset_path, index=False)
 
-    baseline = _train_pipeline(cfg, df)
-    baseline_path = tmp_path / "baseline.joblib"
-    joblib.dump(baseline, baseline_path)
+    production_model = _train_pipeline(cfg, df)
+    production_path = tmp_path / "production.joblib"
+    joblib.dump(production_model, production_path)
 
     candidate = _train_pipeline(cfg, df)
     # Force the candidate to predict 1s with high probability.
@@ -79,7 +79,7 @@ def test_canary_validation_fails_when_metrics_diverge(tmp_path):
     with pytest.raises(RuntimeError):
         run_canary_validation(
             cfg,
-            baseline_model_path=baseline_path,
+            production_model_path=production_path,
             candidate_model_path=candidate_path,
             dataset_path=dataset_path,
             max_metric_delta=0.01,

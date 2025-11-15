@@ -1,4 +1,4 @@
-"""Model helpers for the baseline pipeline."""
+"""Model helpers for the CreditRisk PD pipeline."""
 
 from __future__ import annotations
 

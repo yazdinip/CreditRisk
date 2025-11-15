@@ -14,9 +14,10 @@ class PathsConfig:
     """Filesystem locations for generated artifacts."""
 
     model_dir: Path = Path("models")
-    model_filename: str = "baseline_model.joblib"
+    model_filename: str = "creditrisk_pd_model.joblib"
     metrics_file: Path = Path("reports/metrics.json")
     reports_dir: Path = Path("reports")
+    production_model_path: Optional[Path] = None
     feature_store_path: Path = Path("data/processed/feature_store.parquet")
     train_set_path: Path = Path("data/processed/train.parquet")
     test_set_path: Path = Path("data/processed/test.parquet")
@@ -37,6 +38,10 @@ class PathsConfig:
         self.feature_store_path = Path(self.feature_store_path)
         self.train_set_path = Path(self.train_set_path)
         self.test_set_path = Path(self.test_set_path)
+        if self.production_model_path is None:
+            self.production_model_path = Path(self.model_dir) / "production_model.joblib"
+        else:
+            self.production_model_path = Path(self.production_model_path)
         if self.lineage_file is None:
             self.lineage_file = self.reports_dir / "data_lineage.json"
         else:

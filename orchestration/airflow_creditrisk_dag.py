@@ -43,8 +43,11 @@ with DAG(
     )
 
     train = BashOperator(
-        task_id="train_baseline",
-        bash_command=f"cd {repo_dir} && {base_env} && dvc repro train_baseline",
+        task_id="train_creditrisk_pd",
+        bash_command=(
+            f"cd {repo_dir} && {base_env} && "
+            "python -m creditrisk.pipelines.train_creditrisk_pd --config configs/creditrisk_pd.yaml"
+        ),
     )
 
     test = BashOperator(
@@ -67,7 +70,7 @@ with DAG(
         bash_command=(
             f"cd {repo_dir} && {base_env} && "
             "python -m creditrisk.monitoring.production "
-            "--config configs/baseline.yaml "
+            "--config configs/creditrisk_pd.yaml "
             "--current {{ var.value.production_dataset_path | default('data/production/current.parquet') }} "
             "--publish-metrics"
         ),
@@ -78,9 +81,9 @@ with DAG(
         bash_command=(
             f"cd {repo_dir} && {base_env} && "
             "python -m creditrisk.pipelines.canary_validation "
-            "--config configs/baseline.yaml "
-            "--baseline-model {{ var.value.production_model_path }} "
-            "--candidate-model models/baseline_model.joblib "
+            "--config configs/creditrisk_pd.yaml "
+            "--production-model {{ var.value.production_model_path }} "
+            "--candidate-model models/creditrisk_pd_model.joblib "
             "--dataset data/processed/test.parquet "
             "--max-metric-delta {{ var.value.canary_max_delta | default('0.02') }}"
         ),

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from creditrisk.models.baseline import build_training_pipeline, evaluate_classifier
+from creditrisk.models.creditrisk_pd import build_training_pipeline, evaluate_classifier
 from .utils import build_test_config
 
 

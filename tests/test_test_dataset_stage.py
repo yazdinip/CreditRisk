@@ -4,7 +4,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from creditrisk.models.baseline import build_training_pipeline
+from creditrisk.models.creditrisk_pd import build_training_pipeline
 from creditrisk.testing.test_dataset import run_test_suite
 from .utils import build_test_config
 
@@ -49,7 +49,8 @@ def test_run_test_suite_creates_metrics_predictions_and_plots(tmp_path):
     metrics = run_test_suite(
         config,
         model_path=config.paths.model_path,
-        test_path=test_path,
+        split_path=test_path,
+        split_name="test",
         metrics_path=metrics_path,
         predictions_path=predictions_path,
         evaluation_dir=evaluation_dir,

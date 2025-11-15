@@ -1,4 +1,4 @@
-"""Compare a candidate deployment against the current baseline before rollout."""
+"""Compare a candidate deployment against the current production model before rollout."""
 
 from __future__ import annotations
 
@@ -20,13 +20,13 @@ LOGGER = logging.getLogger(__name__)
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate a candidate model against the production baseline."
+        description="Validate a candidate model against the active production deployment."
     )
-    parser.add_argument("--config", default="configs/baseline.yaml")
+    parser.add_argument("--config", default="configs/creditrisk_pd.yaml")
     parser.add_argument(
-        "--baseline-model",
-        required=True,
-        help="Path to the currently deployed/approved model (joblib).",
+        "--production-model",
+        default=None,
+        help="Path to the currently deployed/approved model (joblib). Defaults to paths.production_model_path.",
     )
     parser.add_argument(
         "--candidate-model",
@@ -35,8 +35,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--dataset",
-        required=True,
-        help="Reference dataset (parquet/csv) used to compare scoring behavior.",
+        default=None,
+        help="Reference dataset (parquet/csv) used to compare scoring behaviour. Defaults to the cached test split.",
     )
     parser.add_argument(
         "--max-metric-delta",
@@ -75,28 +75,49 @@ def _score_model(model, features: pd.DataFrame, threshold: float) -> Dict[str, f
 def run_canary_validation(
     config: Config,
     *,
-    baseline_model_path: Path,
+    production_model_path: Path,
     candidate_model_path: Path,
     dataset_path: Path,
     max_metric_delta: float,
     output_path: Path,
 ) -> Dict[str, object]:
+    if not candidate_model_path.exists():
+        raise FileNotFoundError(f"Candidate model {candidate_model_path} not found.")
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Reference dataset {dataset_path} not found.")
+    if not production_model_path.exists():
+        summary = {
+            "status": "skipped",
+            "reason": "production_missing",
+            "production_model_path": str(production_model_path),
+            "candidate_model_path": str(candidate_model_path),
+            "dataset_path": str(dataset_path),
+        }
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        LOGGER.warning(
+            "Production model %s missing; skipping canary validation.", production_model_path
+        )
+        return summary
+
     dataset = load_dataframe(dataset_path)
     features = _prepare_features(config, dataset)
 
     import joblib
 
-    baseline_model = joblib.load(baseline_model_path)
+    production_model = joblib.load(production_model_path)
     candidate_model = joblib.load(candidate_model_path)
 
     threshold = config.inference.decision_threshold
-    baseline_stats = _score_model(baseline_model, features, threshold)
+    production_stats = _score_model(production_model, features, threshold)
     candidate_stats = _score_model(candidate_model, features, threshold)
 
     deltas = {
-        "approval_rate_delta": abs(candidate_stats["approval_rate"] - baseline_stats["approval_rate"]),
+        "approval_rate_delta": abs(
+            candidate_stats["approval_rate"] - production_stats["approval_rate"]
+        ),
         "avg_probability_delta": abs(
-            candidate_stats["avg_probability"] - baseline_stats["avg_probability"]
+            candidate_stats["avg_probability"] - production_stats["avg_probability"]
         ),
     }
 
@@ -109,12 +130,12 @@ def run_canary_validation(
         "status": status,
         "threshold": threshold,
         "max_metric_delta": max_metric_delta,
-        "baseline": baseline_stats,
+        "production": production_stats,
         "candidate": candidate_stats,
         "deltas": deltas,
         "records_compared": len(features),
         "dataset_path": str(dataset_path),
-        "baseline_model_path": str(baseline_model_path),
+        "production_model_path": str(production_model_path),
         "candidate_model_path": str(candidate_model_path),
     }
 
@@ -133,11 +154,18 @@ def main() -> None:
     args = _parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = Config.from_yaml(args.config)
+    production_path = (
+        Path(args.production_model)
+        if args.production_model
+        else Path(cfg.paths.production_model_path)
+    )
+    candidate_path = Path(args.candidate_model)
+    dataset_path = Path(args.dataset) if args.dataset else Path(cfg.paths.test_set_path)
     run_canary_validation(
         cfg,
-        baseline_model_path=Path(args.baseline_model),
-        candidate_model_path=Path(args.candidate_model),
-        dataset_path=Path(args.dataset),
+        production_model_path=production_path,
+        candidate_model_path=candidate_path,
+        dataset_path=dataset_path,
         max_metric_delta=args.max_metric_delta,
         output_path=Path(args.output),
     )

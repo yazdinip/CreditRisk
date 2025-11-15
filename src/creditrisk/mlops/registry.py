@@ -129,12 +129,23 @@ class ModelRegistryManager:
         if not registry_cfg.enabled:
             raise ValueError("Model registry is disabled; cannot transition stages.")
 
-        self.client.transition_model_version_stage(
-            name=registry_cfg.model_name,
-            version=version,
-            stage=stage,
-            archive_existing=archive_existing,
-        )
+        try:
+            self.client.transition_model_version_stage(
+                name=registry_cfg.model_name,
+                version=version,
+                stage=stage,
+                archive_existing=archive_existing,
+            )
+        except TypeError as exc:
+            LOGGER.warning(
+                "transition_model_version_stage does not accept 'archive_existing' parameter on this MLflow version (%s); falling back to default behaviour.",
+                exc,
+            )
+            self.client.transition_model_version_stage(
+                name=registry_cfg.model_name,
+                version=version,
+                stage=stage,
+            )
         LOGGER.info(
             "Promoted %s version %s to stage %s (archive_existing=%s).",
             registry_cfg.model_name,

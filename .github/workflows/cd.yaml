@@ -56,17 +56,14 @@ jobs:
       - name: Run full pipeline
         run: dvc repro validate_model
 
+      - name: Run register_model stage
+        run: dvc repro register_model
+
       - name: Generate drift monitoring artifacts
         run: dvc repro monitor_drift
 
-      - name: Promote model
-        if: success()
-        run: |
-          if [ -f reports/registry_promotion.json ]; then
-            python -m creditrisk.pipelines.auto_promote --config configs/baseline.yaml --stage Production
-          else
-            echo "Registry promotion report missing; skipping."
-          fi
+      - name: Canary validation
+        run: dvc repro canary_validation
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -163,13 +160,15 @@ jobs:
         with:
           name: creditrisk-artifacts
           path: |
-            models/baseline_model.joblib
+            models/creditrisk_pd_model.joblib
             reports/metrics.json
             reports/post_training_validation.json
             reports/evaluation/**
             reports/data_lineage.json
             reports/ingestion_summary.json
             reports/registry_promotion.json
+            reports/registry_transition.json
             reports/drift_report.json
             reports/drift_report.html
             reports/data_freshness.json
+            reports/canary_report.json

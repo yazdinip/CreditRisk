@@ -2,7 +2,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from creditrisk.models.baseline import build_training_pipeline
+from creditrisk.models.creditrisk_pd import build_training_pipeline
 from creditrisk.pipelines.batch_predict import run_batch_inference
 from .utils import build_test_config
 

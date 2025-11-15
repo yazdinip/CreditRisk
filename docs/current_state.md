@@ -10,13 +10,13 @@
 
 ## DVC Integration
 
-- `dvc.yaml` defines each stage with explicit `deps` and `outs`, so cache invalidation is deterministic. For example, `build_feature_store` depends on every raw CSV plus the feature scripts, while `train_baseline` depends on the processed splits and all modeling utilities.
+- `dvc.yaml` defines each stage with explicit `deps` and `outs`, so cache invalidation is deterministic. For example, `build_feature_store` depends on every raw CSV plus the feature scripts, while `fit_model` consumes the processed splits and saved feature metadata and `evaluate_{train,test}` reuse the cached splits + pipeline without re-training.
 - `dvc.lock` captures the exact git hashes + data checksums used for every successful run. Nightly and CD workflows call `dvc pull` to hydrate caches and `dvc repro` to regenerate artefacts before promotion or drift evaluation.
 - Remote storage can be injected via `DVC_REMOTE_URL`/`DVC_REMOTE_CREDENTIALS`, allowing runners to download datasets without embedding secrets in the repo.
 
 ## MLflow Integration
 
-- `creditrisk.pipelines.train_baseline.log_with_mlflow` logs hyperparameters, metrics (ROC-AUC, KS, precision/recall, etc.), tags, confusion-matrix metadata, and the serialized pipeline under `runs:/<run_id>/model`.
+- `creditrisk.pipelines.train_creditrisk_pd` logs hyperparameters, metrics (ROC-AUC, KS, precision/recall, etc.), tags, and the serialized pipeline under `runs:/<run_id>/model`, while the evaluation stages persist the governance artifacts (`reports/metrics.json`, `reports/test_metrics.json`, `reports/evaluation/**`).
 - Registry automation (`src/creditrisk/mlops/registry.py`) stages new versions and archives old Production builds when `registry.promote_on_metric` thresholds are met. CD calls `python -m creditrisk.pipelines.auto_promote` so humans don’t have to run manual CLI commands.
 - Post-training validation (`src/creditrisk/testing/post_training.py`) compares `reports/test_metrics.json` with the linked MLflow run to ensure the artefacts match what the registry recorded.
 - FastAPI inference sessions open nested MLflow runs (with request_id/entity_count tags) so serving behaviour is observable alongside training history.
@@ -32,9 +32,10 @@
 - **CI (`ci.yaml`)** – lint/test/compile pipeline plus `dvc repro --dry-run validate_model` on every PR/push.
 - **CD (`cd.yaml`)** – full pipeline run, drift generation, MLflow promotion, Docker builds, optional ECS deploy + rollback, data freshness gating, and artefact uploading on `main` pushes.
 - **Nightly (`nightly.yaml`)** – scheduled/dispatch workflow that forces the DAG, runs train/test + production drift monitors, publishes CloudWatch metrics, updates `reports/data_freshness.json`, and records `reports/retrain_trigger.json`.
+- **Deployment manifest** – final DVC stage (`deploy_manifest`) writes `reports/deploy_manifest.json`, consolidating the trained model path, Dockerfiles, CI/CD workflow, and registry metadata so release engineers have a single JSON manifest to feed ECS, batch, or on-prem schedulers.
 
 ## Business & Monitoring Alignment
 
 - The automation meets the proposal’s goals: reproducible nightly runs (>95 % success), MLflow-governed promotions, and deployment-ready artefacts for both batch and API surfaces.
-- Drift and freshness reports provide the “data currency” visibility stakeholders asked for. Hooking the JSON outputs into Slack or dashboards is the next incremental step.
+- Drift and freshness reports already provide the “data currency” visibility stakeholders asked for and can be piped into Slack/dashboards with the existing JSON payloads.
 - Governance artefacts (ingestion summary, lineage, validation summary, registry promotion report, retrain trigger report) live under `reports/` so auditors can trace every scoring decision back through data snapshots, configs, and code.

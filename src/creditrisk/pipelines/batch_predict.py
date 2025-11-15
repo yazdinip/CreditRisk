@@ -26,7 +26,7 @@ LOGGER = logging.getLogger(__name__)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run batch inference with a saved model.")
-    parser.add_argument("--config", default="configs/baseline.yaml", help="Path to YAML config.")
+    parser.add_argument("--config", default="configs/creditrisk_pd.yaml", help="Path to YAML config.")
     parser.add_argument("--input-csv", required=True, help="Path to the feature CSV to score.")
     parser.add_argument(
         "--output-csv",

@@ -1,6 +1,6 @@
 paths:
   model_dir: models
-  model_filename: baseline_model.joblib
+  model_filename: creditrisk_pd_model.joblib
   metrics_file: reports/metrics.json
   reports_dir: reports
   feature_store_path: data/processed/feature_store.parquet
@@ -237,7 +237,7 @@ tracking:
 inference:
   decision_threshold: 0.5
   governance_tags:
-    underwriting_program: baseline_pd
+    underwriting_program: creditrisk_pd
     portfolio: home_credit
     channel: api
   mlflow_inference_experiment: creditrisk_pd_inference

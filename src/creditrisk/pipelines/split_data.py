@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/baseline.yaml",
+        default="configs/creditrisk_pd.yaml",
         help="Path to the configuration YAML.",
     )
     parser.add_argument(

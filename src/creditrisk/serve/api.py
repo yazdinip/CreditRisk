@@ -51,7 +51,7 @@ def _load_pipeline(config: Config, model_override: Optional[Path]) -> Any:
 
 
 def create_app(
-    config_path: str = "configs/baseline.yaml",
+    config_path: str = "configs/creditrisk_pd.yaml",
     model_path: Optional[str] = None,
     config_override: Optional[Config] = None,
 ) -> FastAPI:

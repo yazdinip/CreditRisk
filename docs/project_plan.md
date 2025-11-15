@@ -20,7 +20,7 @@
 ## Technical Scope
 
 - **Data platform:** DVC-tracked Kaggle snapshots stored under `data/raw/` plus optional S3/Azure remotes; DuckDB performs feature engineering locally.
-- **ML stack:** sklearn + XGBoost pipeline with SMOTE/downsampling controlled via `configs/baseline.yaml`; Pandera enforces data contracts at every hop.
+- **ML stack:** sklearn + XGBoost pipeline with SMOTE/downsampling controlled via `configs/creditrisk_pd.yaml`; Pandera enforces data contracts at every hop.
 - **Experimentation:** MLflow (tracking + registry) with promotion helpers, SHAP/permutation importance reserved for future interpretability work.
 - **Feature store:** DuckDB SQL + Parquet artefacts served by the `creditrisk.features` module.
 - **Deployment:** Docker + GitHub Actions produce GHCR images for FastAPI + batch; CD optionally redeploys an ECS service and smoke-tests `/predict`.
@@ -41,3 +41,9 @@
 
 Keep the full PDF (`docs/ML_Ops_Project_Proposal.pdf`) for the authoritative source;
 this summary exists so the essentials stay version-controlled with the code.
+
+## Status Update
+
+- Scope delivered: reproducible DVC DAG, MLflow-governed promotions, ECS-ready containers, and FastAPI/batch services are in place.
+- Monitoring complete: Evidently drift, production drift, freshness gating, and retrain triggers produce the governance artefacts promised in the proposal.
+- Remaining work is optional polish (dashboards, extra alert channels) rather than missing functionality.

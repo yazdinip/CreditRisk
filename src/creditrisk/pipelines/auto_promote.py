@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/baseline.yaml",
+        default="configs/creditrisk_pd.yaml",
         help="Path to the configuration YAML.",
     )
     parser.add_argument(
@@ -40,6 +40,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Optional override for the post-training validation summary.",
+    )
+    parser.add_argument(
+        "--transition-log",
+        type=str,
+        default=None,
+        help="Path to write the promotion outcome summary.",
     )
     return parser.parse_args()
 
@@ -101,6 +107,17 @@ def main() -> None:
         run_id,
         args.stage,
     )
+    if args.transition_log:
+        payload = {
+            "model_name": model_name,
+            "version": version,
+            "run_id": run_id,
+            "stage": args.stage,
+        }
+        log_path = Path(args.transition_log)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        LOGGER.info("Promotion summary written to %s", log_path)
 
 
 if __name__ == "__main__":
