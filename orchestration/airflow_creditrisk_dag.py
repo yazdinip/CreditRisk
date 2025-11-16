@@ -24,8 +24,8 @@ with DAG(
     start_date=datetime(2024, 1, 1),
     catchup=False,
 ) as dag:
-    repo_dir = "{{ var.value.creditrisk_repo | default('/opt/creditrisk') }}"
-    base_env = "source /opt/venv/bin/activate"
+    repo_dir = "{{ var.value.creditrisk_repo | default('/home/p_yazdinia/CreditRisk') }}"
+    base_env = "source /home/p_yazdinia/CreditRisk/.venv/bin/activate"
 
     ingest = BashOperator(
         task_id="ingest_data",
