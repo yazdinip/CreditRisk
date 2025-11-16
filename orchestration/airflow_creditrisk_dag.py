@@ -50,9 +50,14 @@ with DAG(
         ),
     )
 
-    test = BashOperator(
-        task_id="test_model",
-        bash_command=f"cd {repo_dir} && {base_env} && dvc repro test_model",
+    evaluate_train = BashOperator(
+        task_id="evaluate_train",
+        bash_command=f"cd {repo_dir} && {base_env} && dvc repro evaluate_train",
+    )
+
+    evaluate_test = BashOperator(
+        task_id="evaluate_test",
+        bash_command=f"cd {repo_dir} && {base_env} && dvc repro evaluate_test",
     )
 
     validate = BashOperator(
@@ -89,7 +94,7 @@ with DAG(
         ),
     )
 
-    ingest >> build >> split >> train >> test >> validate
+    ingest >> build >> split >> train >> evaluate_train >> evaluate_test >> validate
     validate >> monitor
     validate >> canary
     monitor >> production_monitor
