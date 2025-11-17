@@ -24,7 +24,7 @@ with DAG(
     start_date=datetime(2024, 1, 1),
     catchup=False,
 ) as dag:
-    repo_dir = "{{ var.value.creditrisk_repo | default('/home/p_yazdinia/CreditRisk') }}"
+    repo_dir = "{{ var.value.get('creditrisk_repo', '/home/p_yazdinia/CreditRisk') }}"
     base_env = "source /home/p_yazdinia/CreditRisk/.venv/bin/activate"
 
     ingest = BashOperator(
@@ -76,7 +76,7 @@ with DAG(
             f"cd {repo_dir} && {base_env} && "
             "python -m creditrisk.monitoring.production "
             "--config configs/creditrisk_pd.yaml "
-            "--current {{ var.value.production_dataset_path | default('data/production/current.parquet') }} "
+            "--current {{ var.value.get('production_dataset_path', 'data/production/current.parquet') }} "
             "--publish-metrics"
         ),
     )
@@ -87,10 +87,10 @@ with DAG(
             f"cd {repo_dir} && {base_env} && "
             "python -m creditrisk.pipelines.canary_validation "
             "--config configs/creditrisk_pd.yaml "
-            "--production-model {{ var.value.production_model_path }} "
+            "--production-model {{ var.value.get('production_model_path', 'models/production_model.joblib') }} "
             "--candidate-model models/creditrisk_pd_model.joblib "
             "--dataset data/processed/test.parquet "
-            "--max-metric-delta {{ var.value.canary_max_delta | default('0.02') }}"
+            "--max-metric-delta {{ var.value.get('canary_max_delta', '0.02') }}"
         ),
     )
 
