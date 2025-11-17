@@ -67,7 +67,10 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
    - Update configs in `configs/creditrisk_pd.yaml` (thresholds, registry behavior, validation toggles) and re-run `dvc repro`.
    - Use `python -m creditrisk.pipelines.promote_model --version <n> --stage Production --archive-existing` after governance sign-off.
 
-5. **Monitor production pulls**
+5. **Operate on GCP**
+   - The live environment runs on a Compute Engine VM with Dockerised FastAPI, self-hosted Airflow, and an on-demand MLflow UI secured via SSH tunnelling. See `docs/cloud_setup.md` for the exact provisioning steps (VM creation, dependency install, Airflow bootstrap, MLflow tunnel, firewall notes).
+
+6. **Monitor production pulls**
    ```bash
    python -m creditrisk.monitoring.production \
      --config configs/creditrisk_pd.yaml \
