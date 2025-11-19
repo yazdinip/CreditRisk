@@ -79,6 +79,32 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
    ```
    This generates `reports/production_drift_report.{json,html}`, pushes drift metrics to CloudWatch when AWS credentials are available, and records `reports/retrain_trigger.json` so you know whether the automation would have kicked off a retrain.
 
+### FastAPI Serving
+- Docker image: `Dockerfile.api` (uvicorn on port 8080, exposed as 80 on the VM).
+- Endpoints: `/health`, `/metadata`, `/schema`, `/validate`, `/predict`, `/metrics`. Payload schema and curl examples live in `docs/api_usage.md`.
+- To redeploy locally on the VM:
+  ```bash
+  docker run -d --name creditrisk-api \
+    -p 80:8080 \
+    -v $PWD/configs:/app/configs \
+  -v $PWD/models:/app/models \
+  -e CONFIG_PATH=configs/creditrisk_pd.yaml \
+  -e MLFLOW_TRACKING_URI=mlruns \
+  creditrisk-api:latest
+  ```
+
+### Local Runbook
+- Full local pipeline + UIs: see `docs/local_pipeline.md` for venv setup, data hydration options, `dvc repro`, uvicorn/Docker serving, MLflow UI, and optional local Airflow.
+
+### Governance & Monitoring Artefacts
+- See `docs/governance_artifacts.md` for what each report/JSON (lineage, drift, freshness, registry, canary, deploy manifest) contains and how it fits the pipeline.
+
+### Doc Map
+- Cloud deployment (Compute Engine, Airflow, MLflow tunnel): `docs/cloud_setup.md`
+- Local runs (venv, DVC, uvicorn/Docker, local Airflow): `docs/local_pipeline.md`
+- API usage (endpoints, payloads, redeploy): `docs/api_usage.md`
+- Artefacts (lineage, drift, freshness, registry, canary, manifest): `docs/governance_artifacts.md`
+
 ---
 
 ## Pipeline Overview
