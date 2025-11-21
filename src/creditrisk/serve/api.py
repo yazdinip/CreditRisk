@@ -91,9 +91,10 @@ def create_app(
         except Exception:  # pragma: no cover - middleware guard
             duration_ms = (time.perf_counter() - start) * 1000
             metrics["errors_total"] = metrics.get("errors_total", 0) + 1
-            if cfg:
+            # Skip CloudWatch publishing when no namespace is configured to avoid boto3 errors on air-gapped hosts.
+            if cfg and cfg.monitoring.cloudwatch_namespace:
                 publish_metric(
-                    namespace=cfg.monitoring.cloudwatch_namespace or "CreditRisk/API",
+                    namespace=cfg.monitoring.cloudwatch_namespace,
                     metric_name="RequestFailures",
                     value=1,
                     dimensions={"Path": request.url.path},
@@ -117,9 +118,9 @@ def create_app(
                 "duration_ms": round(duration_ms, 2),
             },
         )
-        if cfg:
+        if cfg and cfg.monitoring.cloudwatch_namespace:
             publish_metric(
-                namespace=cfg.monitoring.cloudwatch_namespace or "CreditRisk/API",
+                namespace=cfg.monitoring.cloudwatch_namespace,
                 metric_name="RequestLatencyMs",
                 value=round(duration_ms, 2),
                 unit="Milliseconds",
