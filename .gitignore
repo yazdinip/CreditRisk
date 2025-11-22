@@ -29,6 +29,14 @@ reports/evaluation/
 # MLflow local runs
 mlruns/
 
+# Airflow local runtime artefacts
+airflow.cfg
+airflow.db
+airflow-webserver.pid
+logs/
+standalone_admin_password.txt
+webserver_config.py
+
 # DVC cache
 .dvc/cache/
 

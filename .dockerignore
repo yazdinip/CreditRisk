@@ -5,6 +5,7 @@
 __pycache__/
 data/
 mlruns/
+logs/
 reports/
 models/
 .pytest_cache/

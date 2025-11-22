@@ -102,6 +102,7 @@ Everything here treats the Kaggle exports as stand-ins for the lender's feeds an
 ### Doc Map
 - Cloud deployment (Compute Engine, Airflow, MLflow tunnel): `docs/cloud_setup.md`
 - Local runs (venv, DVC, uvicorn/Docker, local Airflow): `docs/local_pipeline.md`
+- Local stack setup w/ Windows troubleshooting + Dockerised Airflow: `docs/local_stack_setup.md`
 - API usage (endpoints, payloads, redeploy): `docs/api_usage.md`
 - Artefacts (lineage, drift, freshness, registry, canary, manifest): `docs/governance_artifacts.md`
 
